@@ -1,0 +1,6 @@
+# Incluir arquivos não-Python no pacote
+include README.md
+include LICENSE
+recursive-include pade/web/templates *.html
+recursive-include pade/web/static *.js *.css *.png *.svg
+recursive-include pade *.sqlite

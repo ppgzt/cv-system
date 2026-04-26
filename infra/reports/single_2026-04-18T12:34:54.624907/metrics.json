@@ -1,0 +1,101 @@
+{
+    "pid": "single_2026-04-18T12:34:54.624907",
+    "load_model_start": "2026-04-18T12:34:54.625264",
+    "load_model_final": "2026-04-18T12:34:56.249693",
+    "animals": {
+        "1": {
+            "first_image_capture_time": "2026-04-18T12:34:56.249743",
+            "imgs": {
+                "1": {
+                    "weight_prediction_start": "2026-04-18T12:34:56.622797",
+                    "weight_prediction_final": "2026-04-18T12:34:56.869019"
+                },
+                "2": {
+                    "weight_prediction_start": "2026-04-18T12:34:57.161293",
+                    "weight_prediction_final": "2026-04-18T12:34:57.486726"
+                },
+                "3": {
+                    "weight_prediction_start": "2026-04-18T12:34:57.855522",
+                    "weight_prediction_final": "2026-04-18T12:34:58.147070"
+                },
+                "4": {
+                    "weight_prediction_start": "2026-04-18T12:34:58.456655",
+                    "weight_prediction_final": "2026-04-18T12:34:58.695444"
+                },
+                "5": {
+                    "weight_prediction_start": "2026-04-18T12:34:59.011195",
+                    "weight_prediction_final": "2026-04-18T12:34:59.266239"
+                },
+                "6": {
+                    "weight_prediction_start": "2026-04-18T12:34:59.622704",
+                    "weight_prediction_final": "2026-04-18T12:34:59.891931"
+                },
+                "7": {
+                    "weight_prediction_start": "2026-04-18T12:35:00.212198",
+                    "weight_prediction_final": "2026-04-18T12:35:00.530183"
+                },
+                "8": {
+                    "weight_prediction_start": "2026-04-18T12:35:00.876606",
+                    "weight_prediction_final": "2026-04-18T12:35:01.146133"
+                },
+                "9": {
+                    "weight_prediction_start": "2026-04-18T12:35:01.471321",
+                    "weight_prediction_final": "2026-04-18T12:35:01.726623"
+                },
+                "10": {
+                    "weight_prediction_start": "2026-04-18T12:35:02.032815",
+                    "weight_prediction_final": "2026-04-18T12:35:02.323085"
+                }
+            },
+            "last_image_capture_time": "2026-04-18T12:35:06.116143",
+            "weight_prediction_final": "2026-04-18T12:35:06.538761"
+        },
+        "2": {
+            "first_image_capture_time": "2026-04-18T12:35:09.543883",
+            "imgs": {
+                "1": {
+                    "weight_prediction_start": "2026-04-18T12:35:09.871948",
+                    "weight_prediction_final": "2026-04-18T12:35:10.133650"
+                },
+                "2": {
+                    "weight_prediction_start": "2026-04-18T12:35:10.436237",
+                    "weight_prediction_final": "2026-04-18T12:35:10.693346"
+                },
+                "3": {
+                    "weight_prediction_start": "2026-04-18T12:35:11.034978",
+                    "weight_prediction_final": "2026-04-18T12:35:11.277564"
+                },
+                "4": {
+                    "weight_prediction_start": "2026-04-18T12:35:11.584369",
+                    "weight_prediction_final": "2026-04-18T12:35:11.840704"
+                },
+                "5": {
+                    "weight_prediction_start": "2026-04-18T12:35:12.257792",
+                    "weight_prediction_final": "2026-04-18T12:35:12.634121"
+                },
+                "6": {
+                    "weight_prediction_start": "2026-04-18T12:35:12.946322",
+                    "weight_prediction_final": "2026-04-18T12:35:13.220197"
+                },
+                "7": {
+                    "weight_prediction_start": "2026-04-18T12:35:13.613727",
+                    "weight_prediction_final": "2026-04-18T12:35:13.873827"
+                },
+                "8": {
+                    "weight_prediction_start": "2026-04-18T12:35:14.256978",
+                    "weight_prediction_final": "2026-04-18T12:35:14.736886"
+                },
+                "9": {
+                    "weight_prediction_start": "2026-04-18T12:35:15.106489",
+                    "weight_prediction_final": "2026-04-18T12:35:15.353554"
+                },
+                "10": {
+                    "weight_prediction_start": "2026-04-18T12:35:15.684763",
+                    "weight_prediction_final": "2026-04-18T12:35:15.945348"
+                }
+            },
+            "last_image_capture_time": "2026-04-18T12:35:19.051610",
+            "weight_prediction_final": "2026-04-18T12:35:19.547481"
+        }
+    }
+}

@@ -1,0 +1,33 @@
+{
+    "pid": "mas_batch_2026-04-18T12:32:55.854894",
+    "load_model_start": "2026-04-18T12:32:56.437274",
+    "load_model_final": "2026-04-18T12:32:59.146200",
+    "animals": {
+        "1": {
+            "first_image_capture_time": "2026-04-18T12:32:59.446085",
+            "imgs": {
+                "20": {
+                    "weight_prediction_start": "2026-04-18T12:33:09.509386",
+                    "weight_prediction_final": "2026-04-18T12:33:11.135482"
+                }
+            },
+            "last_image_capture_time": "2026-04-18T12:33:09.005253",
+            "suitable_images": 12,
+            "total_of_images": 20,
+            "weight_prediction_final": "2026-04-18T12:33:11.135842"
+        },
+        "2": {
+            "first_image_capture_time": "2026-04-18T12:33:13.036757",
+            "imgs": {
+                "19": {
+                    "weight_prediction_start": "2026-04-18T12:33:22.597409",
+                    "weight_prediction_final": "2026-04-18T12:33:23.815045"
+                }
+            },
+            "last_image_capture_time": "2026-04-18T12:33:22.090589",
+            "suitable_images": 11,
+            "total_of_images": 19,
+            "weight_prediction_final": "2026-04-18T12:33:23.815190"
+        }
+    }
+}
