@@ -1,0 +1,1307 @@
+{
+    "pid": "batch_2026-04-29T18:16:10.163515",
+    "load_model_start": "2026-04-29T18:16:10.164208",
+    "load_model_final": "2026-04-29T18:16:17.267060",
+    "animals": {
+        "1": {
+            "first_image_capture_time": "2026-04-29T18:16:17.267181",
+            "imgs": {
+                "10": {
+                    "weight_prediction_start": "2026-04-29T18:16:27.307233",
+                    "weight_prediction_final": "2026-04-29T18:16:28.604426"
+                }
+            },
+            "total_of_images": 10,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:16:26.313561",
+            "weight_prediction_final": "2026-04-29T18:16:28.604510"
+        },
+        "2": {
+            "first_image_capture_time": "2026-04-29T18:16:31.604624",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:16:42.483703",
+                    "weight_prediction_final": "2026-04-29T18:16:44.006849"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:16:41.486816",
+            "weight_prediction_final": "2026-04-29T18:16:44.006924"
+        },
+        "3": {
+            "first_image_capture_time": "2026-04-29T18:16:47.008660",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:16:57.904857",
+                    "weight_prediction_final": "2026-04-29T18:16:59.199732"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:16:56.923290",
+            "weight_prediction_final": "2026-04-29T18:16:59.199797"
+        },
+        "4": {
+            "first_image_capture_time": "2026-04-29T18:17:02.201447",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:17:13.075972",
+                    "weight_prediction_final": "2026-04-29T18:17:14.598679"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:17:12.086443",
+            "weight_prediction_final": "2026-04-29T18:17:14.598742"
+        },
+        "5": {
+            "first_image_capture_time": "2026-04-29T18:17:17.600673",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:17:28.465407",
+                    "weight_prediction_final": "2026-04-29T18:17:29.766318"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:17:27.480475",
+            "weight_prediction_final": "2026-04-29T18:17:29.766382"
+        },
+        "6": {
+            "first_image_capture_time": "2026-04-29T18:17:32.768191",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:17:43.619782",
+                    "weight_prediction_final": "2026-04-29T18:17:45.143440"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:17:42.639213",
+            "weight_prediction_final": "2026-04-29T18:17:45.143511"
+        },
+        "7": {
+            "first_image_capture_time": "2026-04-29T18:17:48.145307",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:17:59.030960",
+                    "weight_prediction_final": "2026-04-29T18:18:00.551504"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:17:58.051203",
+            "weight_prediction_final": "2026-04-29T18:18:00.551573"
+        },
+        "8": {
+            "first_image_capture_time": "2026-04-29T18:18:03.553317",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:18:14.472678",
+                    "weight_prediction_final": "2026-04-29T18:18:15.765680"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:18:13.465085",
+            "weight_prediction_final": "2026-04-29T18:18:15.765744"
+        },
+        "9": {
+            "first_image_capture_time": "2026-04-29T18:18:18.767349",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:18:29.632660",
+                    "weight_prediction_final": "2026-04-29T18:18:31.149453"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:18:28.639765",
+            "weight_prediction_final": "2026-04-29T18:18:31.149520"
+        },
+        "10": {
+            "first_image_capture_time": "2026-04-29T18:18:34.151310",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:18:45.019791",
+                    "weight_prediction_final": "2026-04-29T18:18:46.538854"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:18:44.023824",
+            "weight_prediction_final": "2026-04-29T18:18:46.538921"
+        },
+        "11": {
+            "first_image_capture_time": "2026-04-29T18:18:49.540686",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:19:00.428549",
+                    "weight_prediction_final": "2026-04-29T18:19:01.943936"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:18:59.433159",
+            "weight_prediction_final": "2026-04-29T18:19:01.944002"
+        },
+        "12": {
+            "first_image_capture_time": "2026-04-29T18:19:04.945572",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:19:15.817422",
+                    "weight_prediction_final": "2026-04-29T18:19:17.340053"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:19:14.825201",
+            "weight_prediction_final": "2026-04-29T18:19:17.340122"
+        },
+        "13": {
+            "first_image_capture_time": "2026-04-29T18:19:20.341834",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:19:31.218837",
+                    "weight_prediction_final": "2026-04-29T18:19:32.515255"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:19:30.222881",
+            "weight_prediction_final": "2026-04-29T18:19:32.515322"
+        },
+        "14": {
+            "first_image_capture_time": "2026-04-29T18:19:35.516916",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:19:46.401836",
+                    "weight_prediction_final": "2026-04-29T18:19:47.917744"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:19:45.411830",
+            "weight_prediction_final": "2026-04-29T18:19:47.917810"
+        },
+        "15": {
+            "first_image_capture_time": "2026-04-29T18:19:50.919396",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:20:01.796432",
+                    "weight_prediction_final": "2026-04-29T18:20:03.315898"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:20:00.804721",
+            "weight_prediction_final": "2026-04-29T18:20:03.315967"
+        },
+        "16": {
+            "first_image_capture_time": "2026-04-29T18:20:06.317748",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:20:17.196953",
+                    "weight_prediction_final": "2026-04-29T18:20:18.719159"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:20:16.206380",
+            "weight_prediction_final": "2026-04-29T18:20:18.719227"
+        },
+        "17": {
+            "first_image_capture_time": "2026-04-29T18:20:21.720814",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:20:32.602856",
+                    "weight_prediction_final": "2026-04-29T18:20:34.123733"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:20:31.607202",
+            "weight_prediction_final": "2026-04-29T18:20:34.123802"
+        },
+        "18": {
+            "first_image_capture_time": "2026-04-29T18:20:37.125537",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:20:48.016773",
+                    "weight_prediction_final": "2026-04-29T18:20:49.325494"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:20:47.035220",
+            "weight_prediction_final": "2026-04-29T18:20:49.325558"
+        },
+        "19": {
+            "first_image_capture_time": "2026-04-29T18:20:52.328148",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:21:03.171810",
+                    "weight_prediction_final": "2026-04-29T18:21:04.695431"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:21:02.191334",
+            "weight_prediction_final": "2026-04-29T18:21:04.695497"
+        },
+        "20": {
+            "first_image_capture_time": "2026-04-29T18:21:07.697412",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:21:18.608645",
+                    "weight_prediction_final": "2026-04-29T18:21:19.901365"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:21:17.614706",
+            "weight_prediction_final": "2026-04-29T18:21:19.901427"
+        },
+        "21": {
+            "first_image_capture_time": "2026-04-29T18:21:22.903030",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:21:33.801038",
+                    "weight_prediction_final": "2026-04-29T18:21:35.324473"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:21:32.817949",
+            "weight_prediction_final": "2026-04-29T18:21:35.324542"
+        },
+        "22": {
+            "first_image_capture_time": "2026-04-29T18:21:38.326107",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:21:49.233095",
+                    "weight_prediction_final": "2026-04-29T18:21:50.527261"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:21:48.239990",
+            "weight_prediction_final": "2026-04-29T18:21:50.527336"
+        },
+        "23": {
+            "first_image_capture_time": "2026-04-29T18:21:53.528923",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:22:04.383866",
+                    "weight_prediction_final": "2026-04-29T18:22:05.905937"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:22:03.388354",
+            "weight_prediction_final": "2026-04-29T18:22:05.906004"
+        },
+        "24": {
+            "first_image_capture_time": "2026-04-29T18:22:08.907631",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:22:19.807945",
+                    "weight_prediction_final": "2026-04-29T18:22:21.331417"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:22:18.809147",
+            "weight_prediction_final": "2026-04-29T18:22:21.331485"
+        },
+        "25": {
+            "first_image_capture_time": "2026-04-29T18:22:24.333231",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:22:35.221847",
+                    "weight_prediction_final": "2026-04-29T18:22:36.739766"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:22:34.223098",
+            "weight_prediction_final": "2026-04-29T18:22:36.739834"
+        },
+        "26": {
+            "first_image_capture_time": "2026-04-29T18:22:39.741627",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:22:50.603304",
+                    "weight_prediction_final": "2026-04-29T18:22:51.901187"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:22:49.624739",
+            "weight_prediction_final": "2026-04-29T18:22:51.901253"
+        },
+        "27": {
+            "first_image_capture_time": "2026-04-29T18:22:54.902895",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:23:05.755123",
+                    "weight_prediction_final": "2026-04-29T18:23:07.271744"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:23:04.775030",
+            "weight_prediction_final": "2026-04-29T18:23:07.271813"
+        },
+        "28": {
+            "first_image_capture_time": "2026-04-29T18:23:10.273729",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:23:21.143053",
+                    "weight_prediction_final": "2026-04-29T18:23:22.659837"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:23:20.161275",
+            "weight_prediction_final": "2026-04-29T18:23:22.659903"
+        },
+        "29": {
+            "first_image_capture_time": "2026-04-29T18:23:25.661645",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:23:36.533856",
+                    "weight_prediction_final": "2026-04-29T18:23:38.053457"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:23:35.555223",
+            "weight_prediction_final": "2026-04-29T18:23:38.053525"
+        },
+        "30": {
+            "first_image_capture_time": "2026-04-29T18:23:41.055334",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:23:51.936208",
+                    "weight_prediction_final": "2026-04-29T18:23:53.453353"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:23:50.944771",
+            "weight_prediction_final": "2026-04-29T18:23:53.453423"
+        },
+        "31": {
+            "first_image_capture_time": "2026-04-29T18:23:56.455003",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:24:07.301448",
+                    "weight_prediction_final": "2026-04-29T18:24:08.826984"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:24:06.312112",
+            "weight_prediction_final": "2026-04-29T18:24:08.827050"
+        },
+        "32": {
+            "first_image_capture_time": "2026-04-29T18:24:11.828598",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:24:22.727248",
+                    "weight_prediction_final": "2026-04-29T18:24:24.242751"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:24:21.718541",
+            "weight_prediction_final": "2026-04-29T18:24:24.242831"
+        },
+        "33": {
+            "first_image_capture_time": "2026-04-29T18:24:27.244621",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:24:38.090841",
+                    "weight_prediction_final": "2026-04-29T18:24:39.611647"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:24:37.115035",
+            "weight_prediction_final": "2026-04-29T18:24:39.611715"
+        },
+        "34": {
+            "first_image_capture_time": "2026-04-29T18:24:42.613588",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:24:53.498935",
+                    "weight_prediction_final": "2026-04-29T18:24:54.793124"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:24:52.508287",
+            "weight_prediction_final": "2026-04-29T18:24:54.793191"
+        },
+        "35": {
+            "first_image_capture_time": "2026-04-29T18:24:57.794765",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:25:08.669851",
+                    "weight_prediction_final": "2026-04-29T18:25:10.192554"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:25:07.671162",
+            "weight_prediction_final": "2026-04-29T18:25:10.192623"
+        },
+        "36": {
+            "first_image_capture_time": "2026-04-29T18:25:13.194427",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:25:24.075460",
+                    "weight_prediction_final": "2026-04-29T18:25:25.371984"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:25:23.086077",
+            "weight_prediction_final": "2026-04-29T18:25:25.372052"
+        },
+        "37": {
+            "first_image_capture_time": "2026-04-29T18:25:28.373655",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:25:39.220903",
+                    "weight_prediction_final": "2026-04-29T18:25:40.739317"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:25:38.224818",
+            "weight_prediction_final": "2026-04-29T18:25:40.739384"
+        },
+        "38": {
+            "first_image_capture_time": "2026-04-29T18:25:43.740996",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:25:54.609358",
+                    "weight_prediction_final": "2026-04-29T18:25:56.125548"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:25:53.620124",
+            "weight_prediction_final": "2026-04-29T18:25:56.125616"
+        },
+        "39": {
+            "first_image_capture_time": "2026-04-29T18:25:59.127365",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:26:09.978334",
+                    "weight_prediction_final": "2026-04-29T18:26:11.502161"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:26:08.999006",
+            "weight_prediction_final": "2026-04-29T18:26:11.502225"
+        },
+        "40": {
+            "first_image_capture_time": "2026-04-29T18:26:14.504028",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:26:25.392225",
+                    "weight_prediction_final": "2026-04-29T18:26:26.912920"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:26:24.396787",
+            "weight_prediction_final": "2026-04-29T18:26:26.912988"
+        },
+        "41": {
+            "first_image_capture_time": "2026-04-29T18:26:29.914694",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:26:40.772252",
+                    "weight_prediction_final": "2026-04-29T18:26:42.069266"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:26:39.791924",
+            "weight_prediction_final": "2026-04-29T18:26:42.069331"
+        },
+        "42": {
+            "first_image_capture_time": "2026-04-29T18:26:45.071096",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:26:55.927469",
+                    "weight_prediction_final": "2026-04-29T18:26:57.451398"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:26:54.935188",
+            "weight_prediction_final": "2026-04-29T18:26:57.451466"
+        },
+        "43": {
+            "first_image_capture_time": "2026-04-29T18:27:00.453266",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:27:11.340786",
+                    "weight_prediction_final": "2026-04-29T18:27:12.641625"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:27:10.347102",
+            "weight_prediction_final": "2026-04-29T18:27:12.641691"
+        },
+        "44": {
+            "first_image_capture_time": "2026-04-29T18:27:15.643292",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:27:26.509681",
+                    "weight_prediction_final": "2026-04-29T18:27:28.026968"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:27:25.531299",
+            "weight_prediction_final": "2026-04-29T18:27:28.027035"
+        },
+        "45": {
+            "first_image_capture_time": "2026-04-29T18:27:31.028641",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:27:41.915916",
+                    "weight_prediction_final": "2026-04-29T18:27:43.432307"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:27:40.921154",
+            "weight_prediction_final": "2026-04-29T18:27:43.432375"
+        },
+        "46": {
+            "first_image_capture_time": "2026-04-29T18:27:46.434114",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:27:57.309146",
+                    "weight_prediction_final": "2026-04-29T18:27:58.602396"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:27:56.317670",
+            "weight_prediction_final": "2026-04-29T18:27:58.602460"
+        },
+        "47": {
+            "first_image_capture_time": "2026-04-29T18:28:01.604041",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:28:12.461204",
+                    "weight_prediction_final": "2026-04-29T18:28:13.978549"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:28:11.479792",
+            "weight_prediction_final": "2026-04-29T18:28:13.978613"
+        },
+        "48": {
+            "first_image_capture_time": "2026-04-29T18:28:16.980395",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:28:27.842063",
+                    "weight_prediction_final": "2026-04-29T18:28:29.361202"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:28:26.845148",
+            "weight_prediction_final": "2026-04-29T18:28:29.361270"
+        },
+        "49": {
+            "first_image_capture_time": "2026-04-29T18:28:32.363028",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:28:43.264762",
+                    "weight_prediction_final": "2026-04-29T18:28:44.557070"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:28:42.270462",
+            "weight_prediction_final": "2026-04-29T18:28:44.557136"
+        },
+        "50": {
+            "first_image_capture_time": "2026-04-29T18:28:47.558716",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:28:58.429978",
+                    "weight_prediction_final": "2026-04-29T18:28:59.948537"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:28:57.439465",
+            "weight_prediction_final": "2026-04-29T18:28:59.948604"
+        },
+        "51": {
+            "first_image_capture_time": "2026-04-29T18:29:02.950217",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:29:13.806011",
+                    "weight_prediction_final": "2026-04-29T18:29:15.330669"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:29:12.821977",
+            "weight_prediction_final": "2026-04-29T18:29:15.330734"
+        },
+        "52": {
+            "first_image_capture_time": "2026-04-29T18:29:18.332613",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:29:29.211288",
+                    "weight_prediction_final": "2026-04-29T18:29:30.509521"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:29:28.228980",
+            "weight_prediction_final": "2026-04-29T18:29:30.509584"
+        },
+        "53": {
+            "first_image_capture_time": "2026-04-29T18:29:33.511367",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:29:44.404564",
+                    "weight_prediction_final": "2026-04-29T18:29:45.696688"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:29:43.424581",
+            "weight_prediction_final": "2026-04-29T18:29:45.696757"
+        },
+        "54": {
+            "first_image_capture_time": "2026-04-29T18:29:48.698559",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:29:59.555932",
+                    "weight_prediction_final": "2026-04-29T18:30:01.080971"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:29:58.564303",
+            "weight_prediction_final": "2026-04-29T18:30:01.081039"
+        },
+        "55": {
+            "first_image_capture_time": "2026-04-29T18:30:04.082857",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:30:14.969005",
+                    "weight_prediction_final": "2026-04-29T18:30:16.487311"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:30:13.973509",
+            "weight_prediction_final": "2026-04-29T18:30:16.487379"
+        },
+        "56": {
+            "first_image_capture_time": "2026-04-29T18:30:19.488938",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:30:30.357315",
+                    "weight_prediction_final": "2026-04-29T18:30:31.879570"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:30:29.375962",
+            "weight_prediction_final": "2026-04-29T18:30:31.879639"
+        },
+        "57": {
+            "first_image_capture_time": "2026-04-29T18:30:34.881395",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:30:45.762546",
+                    "weight_prediction_final": "2026-04-29T18:30:47.282903"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:30:44.775212",
+            "weight_prediction_final": "2026-04-29T18:30:47.282970"
+        },
+        "58": {
+            "first_image_capture_time": "2026-04-29T18:30:50.284761",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:31:01.153850",
+                    "weight_prediction_final": "2026-04-29T18:31:02.670327"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:31:00.159288",
+            "weight_prediction_final": "2026-04-29T18:31:02.670392"
+        },
+        "59": {
+            "first_image_capture_time": "2026-04-29T18:31:05.672156",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:31:16.516570",
+                    "weight_prediction_final": "2026-04-29T18:31:18.039076"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:31:15.523265",
+            "weight_prediction_final": "2026-04-29T18:31:18.039141"
+        },
+        "60": {
+            "first_image_capture_time": "2026-04-29T18:31:21.040889",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:31:31.909914",
+                    "weight_prediction_final": "2026-04-29T18:31:33.431517"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:31:30.921435",
+            "weight_prediction_final": "2026-04-29T18:31:33.431583"
+        },
+        "61": {
+            "first_image_capture_time": "2026-04-29T18:31:36.433367",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:31:47.292614",
+                    "weight_prediction_final": "2026-04-29T18:31:48.811662"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:31:46.309822",
+            "weight_prediction_final": "2026-04-29T18:31:48.811729"
+        },
+        "62": {
+            "first_image_capture_time": "2026-04-29T18:31:51.813598",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:32:02.683412",
+                    "weight_prediction_final": "2026-04-29T18:32:03.994033"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:32:01.702981",
+            "weight_prediction_final": "2026-04-29T18:32:03.994105"
+        },
+        "63": {
+            "first_image_capture_time": "2026-04-29T18:32:06.995739",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:32:17.858361",
+                    "weight_prediction_final": "2026-04-29T18:32:19.379055"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:32:16.876236",
+            "weight_prediction_final": "2026-04-29T18:32:19.379123"
+        },
+        "64": {
+            "first_image_capture_time": "2026-04-29T18:32:22.380999",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:32:33.275101",
+                    "weight_prediction_final": "2026-04-29T18:32:34.573462"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:32:32.284777",
+            "weight_prediction_final": "2026-04-29T18:32:34.573528"
+        },
+        "65": {
+            "first_image_capture_time": "2026-04-29T18:32:37.575134",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:32:48.428838",
+                    "weight_prediction_final": "2026-04-29T18:32:49.948089"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:32:47.436672",
+            "weight_prediction_final": "2026-04-29T18:32:49.948157"
+        },
+        "66": {
+            "first_image_capture_time": "2026-04-29T18:32:52.949763",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:33:03.803987",
+                    "weight_prediction_final": "2026-04-29T18:33:05.325367"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:33:02.828695",
+            "weight_prediction_final": "2026-04-29T18:33:05.325436"
+        },
+        "67": {
+            "first_image_capture_time": "2026-04-29T18:33:08.327193",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:33:19.226366",
+                    "weight_prediction_final": "2026-04-29T18:33:20.520429"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:33:18.236917",
+            "weight_prediction_final": "2026-04-29T18:33:20.520494"
+        },
+        "68": {
+            "first_image_capture_time": "2026-04-29T18:33:23.522040",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:33:34.411710",
+                    "weight_prediction_final": "2026-04-29T18:33:35.930329"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:33:33.418713",
+            "weight_prediction_final": "2026-04-29T18:33:35.930395"
+        },
+        "69": {
+            "first_image_capture_time": "2026-04-29T18:33:38.932017",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:33:49.810947",
+                    "weight_prediction_final": "2026-04-29T18:33:51.329719"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:33:48.813422",
+            "weight_prediction_final": "2026-04-29T18:33:51.329786"
+        },
+        "70": {
+            "first_image_capture_time": "2026-04-29T18:33:54.331554",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:34:05.206233",
+                    "weight_prediction_final": "2026-04-29T18:34:06.723844"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:34:04.214847",
+            "weight_prediction_final": "2026-04-29T18:34:06.723909"
+        },
+        "71": {
+            "first_image_capture_time": "2026-04-29T18:34:09.725453",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:34:20.579215",
+                    "weight_prediction_final": "2026-04-29T18:34:22.098027"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:34:19.601172",
+            "weight_prediction_final": "2026-04-29T18:34:22.098088"
+        },
+        "72": {
+            "first_image_capture_time": "2026-04-29T18:34:25.099973",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:34:35.985802",
+                    "weight_prediction_final": "2026-04-29T18:34:37.283589"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:34:34.993113",
+            "weight_prediction_final": "2026-04-29T18:34:37.283654"
+        },
+        "73": {
+            "first_image_capture_time": "2026-04-29T18:34:40.285262",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:34:51.127610",
+                    "weight_prediction_final": "2026-04-29T18:34:52.651334"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:34:50.148480",
+            "weight_prediction_final": "2026-04-29T18:34:52.651400"
+        },
+        "74": {
+            "first_image_capture_time": "2026-04-29T18:34:55.652969",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:35:06.517636",
+                    "weight_prediction_final": "2026-04-29T18:35:08.039362"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:35:05.536346",
+            "weight_prediction_final": "2026-04-29T18:35:08.039430"
+        },
+        "75": {
+            "first_image_capture_time": "2026-04-29T18:35:11.041341",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:35:21.921359",
+                    "weight_prediction_final": "2026-04-29T18:35:23.436640"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:35:20.928842",
+            "weight_prediction_final": "2026-04-29T18:35:23.436708"
+        },
+        "76": {
+            "first_image_capture_time": "2026-04-29T18:35:26.438462",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:35:37.310702",
+                    "weight_prediction_final": "2026-04-29T18:35:38.610058"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:35:36.333845",
+            "weight_prediction_final": "2026-04-29T18:35:38.610120"
+        },
+        "77": {
+            "first_image_capture_time": "2026-04-29T18:35:41.611728",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:35:52.477931",
+                    "weight_prediction_final": "2026-04-29T18:35:53.997856"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:35:51.481791",
+            "weight_prediction_final": "2026-04-29T18:35:53.997921"
+        },
+        "78": {
+            "first_image_capture_time": "2026-04-29T18:35:56.999675",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:36:07.886192",
+                    "weight_prediction_final": "2026-04-29T18:36:09.409206"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:36:06.896261",
+            "weight_prediction_final": "2026-04-29T18:36:09.409273"
+        },
+        "79": {
+            "first_image_capture_time": "2026-04-29T18:36:12.411011",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:36:23.290191",
+                    "weight_prediction_final": "2026-04-29T18:36:24.810424"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:36:22.297771",
+            "weight_prediction_final": "2026-04-29T18:36:24.810490"
+        },
+        "80": {
+            "first_image_capture_time": "2026-04-29T18:36:27.812086",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:36:38.679358",
+                    "weight_prediction_final": "2026-04-29T18:36:40.202437"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:36:37.695393",
+            "weight_prediction_final": "2026-04-29T18:36:40.202501"
+        },
+        "81": {
+            "first_image_capture_time": "2026-04-29T18:36:43.204260",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:36:54.100863",
+                    "weight_prediction_final": "2026-04-29T18:36:55.399460"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:36:53.118657",
+            "weight_prediction_final": "2026-04-29T18:36:55.399529"
+        },
+        "82": {
+            "first_image_capture_time": "2026-04-29T18:36:58.401142",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:37:09.252275",
+                    "weight_prediction_final": "2026-04-29T18:37:10.773265"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:37:08.261859",
+            "weight_prediction_final": "2026-04-29T18:37:10.773330"
+        },
+        "83": {
+            "first_image_capture_time": "2026-04-29T18:37:13.775250",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:37:24.666653",
+                    "weight_prediction_final": "2026-04-29T18:37:26.185875"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:37:23.673906",
+            "weight_prediction_final": "2026-04-29T18:37:26.185942"
+        },
+        "84": {
+            "first_image_capture_time": "2026-04-29T18:37:29.187694",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:37:40.098238",
+                    "weight_prediction_final": "2026-04-29T18:37:41.392316"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:37:39.104450",
+            "weight_prediction_final": "2026-04-29T18:37:41.392383"
+        },
+        "85": {
+            "first_image_capture_time": "2026-04-29T18:37:44.393958",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:37:55.266703",
+                    "weight_prediction_final": "2026-04-29T18:37:56.789626"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:37:54.276260",
+            "weight_prediction_final": "2026-04-29T18:37:56.789692"
+        },
+        "86": {
+            "first_image_capture_time": "2026-04-29T18:37:59.791523",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:38:10.665644",
+                    "weight_prediction_final": "2026-04-29T18:38:12.183461"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:38:09.672600",
+            "weight_prediction_final": "2026-04-29T18:38:12.183528"
+        },
+        "87": {
+            "first_image_capture_time": "2026-04-29T18:38:15.185277",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:38:26.089946",
+                    "weight_prediction_final": "2026-04-29T18:38:27.611108"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:38:25.090316",
+            "weight_prediction_final": "2026-04-29T18:38:27.611174"
+        },
+        "88": {
+            "first_image_capture_time": "2026-04-29T18:38:30.612912",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:38:41.472654",
+                    "weight_prediction_final": "2026-04-29T18:38:42.993571"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:38:40.480327",
+            "weight_prediction_final": "2026-04-29T18:38:42.993637"
+        },
+        "89": {
+            "first_image_capture_time": "2026-04-29T18:38:45.995410",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:38:56.885759",
+                    "weight_prediction_final": "2026-04-29T18:38:58.181374"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:38:55.895569",
+            "weight_prediction_final": "2026-04-29T18:38:58.181437"
+        },
+        "90": {
+            "first_image_capture_time": "2026-04-29T18:39:01.183055",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:39:12.043501",
+                    "weight_prediction_final": "2026-04-29T18:39:13.563232"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:39:11.049641",
+            "weight_prediction_final": "2026-04-29T18:39:13.563297"
+        },
+        "91": {
+            "first_image_capture_time": "2026-04-29T18:39:16.564847",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:39:27.431862",
+                    "weight_prediction_final": "2026-04-29T18:39:28.955298"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:39:26.450666",
+            "weight_prediction_final": "2026-04-29T18:39:28.955367"
+        },
+        "92": {
+            "first_image_capture_time": "2026-04-29T18:39:31.957161",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:39:42.815864",
+                    "weight_prediction_final": "2026-04-29T18:39:44.334714"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:39:41.829248",
+            "weight_prediction_final": "2026-04-29T18:39:44.334792"
+        },
+        "93": {
+            "first_image_capture_time": "2026-04-29T18:39:47.336525",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:39:58.205533",
+                    "weight_prediction_final": "2026-04-29T18:39:59.726147"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:39:57.212940",
+            "weight_prediction_final": "2026-04-29T18:39:59.726210"
+        },
+        "94": {
+            "first_image_capture_time": "2026-04-29T18:40:02.727956",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:40:13.653992",
+                    "weight_prediction_final": "2026-04-29T18:40:14.946600"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 3,
+            "last_image_capture_time": "2026-04-29T18:40:12.673552",
+            "weight_prediction_final": "2026-04-29T18:40:14.946663"
+        },
+        "95": {
+            "first_image_capture_time": "2026-04-29T18:40:17.948248",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:40:28.813111",
+                    "weight_prediction_final": "2026-04-29T18:40:30.334239"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:40:27.820301",
+            "weight_prediction_final": "2026-04-29T18:40:30.334300"
+        },
+        "96": {
+            "first_image_capture_time": "2026-04-29T18:40:33.335915",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:40:44.224526",
+                    "weight_prediction_final": "2026-04-29T18:40:45.740937"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:40:43.218534",
+            "weight_prediction_final": "2026-04-29T18:40:45.741003"
+        },
+        "97": {
+            "first_image_capture_time": "2026-04-29T18:40:48.742754",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:40:59.614560",
+                    "weight_prediction_final": "2026-04-29T18:41:01.137699"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:40:58.623992",
+            "weight_prediction_final": "2026-04-29T18:41:01.137764"
+        },
+        "98": {
+            "first_image_capture_time": "2026-04-29T18:41:04.139456",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:41:14.980714",
+                    "weight_prediction_final": "2026-04-29T18:41:16.500475"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:41:14.005137",
+            "weight_prediction_final": "2026-04-29T18:41:16.500543"
+        },
+        "99": {
+            "first_image_capture_time": "2026-04-29T18:41:19.502310",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:41:30.379655",
+                    "weight_prediction_final": "2026-04-29T18:41:31.896812"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:41:29.387459",
+            "weight_prediction_final": "2026-04-29T18:41:31.896880"
+        },
+        "100": {
+            "first_image_capture_time": "2026-04-29T18:41:34.898574",
+            "imgs": {
+                "11": {
+                    "weight_prediction_start": "2026-04-29T18:41:45.768802",
+                    "weight_prediction_final": "2026-04-29T18:41:47.287988"
+                }
+            },
+            "total_of_images": 11,
+            "suitable_images": 4,
+            "last_image_capture_time": "2026-04-29T18:41:44.774462",
+            "weight_prediction_final": "2026-04-29T18:41:47.288055"
+        }
+    }
+}
