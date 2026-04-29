@@ -61,6 +61,7 @@ class SingleStreamStrategy:
 
             weights = []
             i = 0
+            s = 0
 
             elapsed_time = (datetime.now() - start_at).total_seconds()
             last_image_capture = None
@@ -78,6 +79,7 @@ class SingleStreamStrategy:
                     img=img
                 )
                 if suitable:
+                    s += 1
                     inference_metrics = {
                         'weight_prediction_start':datetime.now().isoformat()
                     }
@@ -90,6 +92,9 @@ class SingleStreamStrategy:
 
                 elapsed_time = (datetime.now() - start_at).total_seconds()
 
+            self.metrics['animals'][animal]['total_of_images'] = i
+            self.metrics['animals'][animal]['suitable_images'] = s
+            
             self.metrics['animals'][animal]['last_image_capture_time'] = last_image_capture
             print(weights)
 
