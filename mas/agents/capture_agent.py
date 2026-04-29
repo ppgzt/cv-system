@@ -112,6 +112,7 @@ class CaptureBehaviour(TimedBehaviour):
                 self._finished = True
                 return
             self.start_at = time.time()
+            elapsed = 0.0
             self.captured_count = 0
             self.first_capture = None
             self.last_capture = None
@@ -121,7 +122,7 @@ class CaptureBehaviour(TimedBehaviour):
                 self.agent.aid.name,
                 f"[RESTART] Animal {self.current_animal_id}/{self.herd_size} entering scale.",
             )
-            return
+            # Remove o return para permitir que o primeiro frame seja capturado imediatamente
 
         # --- ARRIVAL mode: animal off-screen, idle ---
         if elapsed > self.passage_time:

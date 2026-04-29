@@ -211,9 +211,8 @@ class PredictWeightAgent(Agent):
                         
                     self.metrics['animals'][animal_id]['first_image_capture_time'] = capture_metrics.get("first_image_capture_time")
                     self.metrics['animals'][animal_id]['last_image_capture_time'] = capture_metrics.get("last_image_capture_time")
-                    if self.mode == "batch":
-                        self.metrics['animals'][animal_id]['suitable_images'] = data.get("suitable_count", 0)
-                        self.metrics['animals'][animal_id]['total_of_images'] = total_frames
+                    self.metrics['animals'][animal_id]['suitable_images'] = data.get("suitable_count", 0)
+                    self.metrics['animals'][animal_id]['total_of_images'] = total_frames
                     
                 self._check_batch_ready_custom(animal_id, total_frames)
             except Exception as e:
