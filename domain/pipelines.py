@@ -17,9 +17,9 @@ from domain.modules.image_capture   import ImageCapture
 from domain.modules.predict_weight  import PredictWeight
 from domain.modules.data_enhance    import DataEnhance
 
-def build_resnet50_selection_model():
+def build_mobilenetv2_selection_model():
     from keras import layers, models
-    base_model = keras.applications.ResNet50(
+    base_model = keras.applications.MobileNetV2(
         weights='imagenet',
         include_top=False,
         input_shape=(300, 300, 3)
@@ -52,7 +52,7 @@ class SingleStreamStrategy:
         self.passage_time = passage_time
 
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
-        self.selection_model = build_resnet50_selection_model()
+        self.selection_model = build_mobilenetv2_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(
@@ -144,7 +144,7 @@ class BatchStreamStrategy:
         self.passage_time = passage_time
 
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
-        self.selection_model = build_resnet50_selection_model()
+        self.selection_model = build_mobilenetv2_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(

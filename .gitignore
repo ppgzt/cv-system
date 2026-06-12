@@ -168,3 +168,6 @@ cython_debug/
 
 # PADE
 mas/pade/web/data.sqlite
+
+# Outros 
+/logs

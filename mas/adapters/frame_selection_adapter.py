@@ -17,7 +17,7 @@ class FrameSelectionAdapter:
     def load_model(self):
         import keras
         from keras import layers, models
-        base_model = keras.applications.ResNet50(
+        base_model = keras.applications.MobileNetV2(
             weights='imagenet',
             include_top=False,
             input_shape=(300, 300, 3)
