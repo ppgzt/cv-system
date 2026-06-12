@@ -4,6 +4,18 @@ import sys, os
 from infra.profiling.agents import CPUMonitor, RAMMonitor, GPUMonitor
 from domain.pipelines import SingleStreamStrategy, BatchStreamStrategy, MASStrategy
 
+
+class Tee:
+    """Duplicates stdout/stderr to both console and a log file."""
+    def __init__(self, *files):
+        self.files = files
+    def write(self, data):
+        for f in self.files:
+            f.write(data)
+    def flush(self):
+        for f in self.files:
+            f.flush()
+
 def main(
         pid: str, strategy: str, herd_size: int, passage_time: int, arrival_time: int, fselection_time: float, fselection_window:float):
     
@@ -55,7 +67,14 @@ if __name__ == "__main__":
         cpu_monitor.start()
         ram_monitor.start()
         # gpu_monitor.start()
-    
+
+    debug = '--debug' in sys.argv
+    log_file = None
+    if debug:
+        log_file = open(f'infra/reports/{pid}/debug.log', 'w')
+        sys.stdout = Tee(sys.__stdout__, log_file)
+        sys.stderr = Tee(sys.__stderr__, log_file)
+
     try:
         # Main program logic
         main(
@@ -63,6 +82,11 @@ if __name__ == "__main__":
         )
 
     finally:
+        if log_file:
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            log_file.close()
+
         # Ensure the monitoring thread is stopped when done or on error
         if 'mas' not in strategy:
             cpu_monitor.stop()
