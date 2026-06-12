@@ -1,6 +1,12 @@
 from datetime import datetime
 import sys, os
 
+# TensorFlow configuration — MUST be before any TF/Keras import
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["KERAS_BACKEND"] = "tensorflow"
+os.environ["TF_INTRA_OP_PARALLELISM_THREADS"] = "1"
+os.environ["TF_INTER_OP_PARALLELISM_THREADS"] = "1"
+
 from infra.profiling.agents import CPUMonitor, RAMMonitor, GPUMonitor
 from domain.pipelines import SingleStreamStrategy, BatchStreamStrategy, MASStrategy
 

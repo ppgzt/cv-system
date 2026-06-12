@@ -3,9 +3,6 @@ import numpy as np
 
 from datetime import datetime
 
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = '0'
-os.environ["KERAS_BACKEND"] = "tensorflow"
-
 def dummy_npwarn_decorator_factory():
   def npwarn_decorator(x):
     return x
@@ -367,4 +364,5 @@ class MASStrategy:
             reactor.listenTCP(agent.aid.port, agent.agentInstance)
 
         display_message("MASStrategy", "Todos os agentes iniciados. Reator Twisted rodando.")
+        reactor.getThreadPool().adjustPoolsize(minthreads=2, maxthreads=4)
         reactor.run()
