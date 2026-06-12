@@ -1,22 +1,23 @@
 import numpy as np
-import time
+import tensorflow as tf
 
 class FrameSelection:
 
     '''
     Perform the frame selection task
     - suitable_window: the window of seconds that should be considered suitable
-    - snooze_duration: the duration of the sleep in seconds
+    - model: Keras/TF model object
     '''
-    def __init__(self, suitable_window: float,  model: object):
+    def __init__(self, suitable_window: float, model: object):
         self.suitable_window = suitable_window
         self.model = model
 
-    def evaluate(self, elapsed_time: float, img):
-        suite = False
+        @tf.function
+        def _compiled_predict(img_tensor):
+            return self.model(img_tensor, training=False)
 
-        if elapsed_time <= self.suitable_window:
-            suite = True
-        
-        self.model(np.array([img]), training=False)
-        return suite
+        self._predict = _compiled_predict
+
+    def evaluate(self, elapsed_time: float, img):
+        self._predict(np.array([img]))
+        return elapsed_time <= self.suitable_window
