@@ -16,7 +16,21 @@ class FrameSelectionAdapter:
 
     def load_model(self):
         import keras
-        model = keras.models.load_model(self.model_path)
+        from keras import layers, models
+        base_model = keras.applications.ResNet50(
+            weights='imagenet',
+            include_top=False,
+            input_shape=(224, 224, 3)
+        )
+        base_model.trainable = False
+        inputs = keras.Input(shape=(224, 224, 3))
+        x = base_model(inputs, training=False)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dense(128, activation='relu')(x)
+        x = layers.Dropout(0.5)(x)
+        outputs = layers.Dense(2, activation='softmax')(x)
+        model = models.Model(inputs, outputs)
+        
         self._selection = FrameSelection(self.suitable_window, model)
 
     def evaluate(self, elapsed_time: float, img) -> bool:

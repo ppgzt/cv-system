@@ -46,9 +46,9 @@ import sys
 ENGINE = create_engine('sqlite:///' + os.path.join(basedir, 'data.sqlite'))
 METADATA = MetaData()
 METADATA.bind = ENGINE
-# SQLAlchemy 2.0: autoload=True foi removido, usar apenas autoload_with
-MESSAGES = Table('messages', METADATA, autoload_with=ENGINE)
-AGENTS = Table('agents', METADATA, autoload_with=ENGINE)
+from pade.web.flask_server import AgentModel, Message
+MESSAGES = Message.__table__
+AGENTS = AgentModel.__table__
 
 # Pool de conexões assíncrono usando twisted.enterprise.adbapi
 DB_POOL = adbapi.ConnectionPool('sqlite3', os.path.join(basedir, 'data.sqlite'), check_same_thread=False)

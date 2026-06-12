@@ -17,6 +17,22 @@ from domain.modules.image_capture   import ImageCapture
 from domain.modules.predict_weight  import PredictWeight
 from domain.modules.data_enhance    import DataEnhance
 
+def build_resnet50_selection_model():
+    from keras import layers, models
+    base_model = keras.applications.ResNet50(
+        weights='imagenet',
+        include_top=False,
+        input_shape=(224, 224, 3)
+    )
+    base_model.trainable = False
+    inputs = keras.Input(shape=(224, 224, 3))
+    x = base_model(inputs, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dense(128, activation='relu')(x)
+    x = layers.Dropout(0.5)(x)
+    outputs = layers.Dense(2, activation='softmax')(x)
+    return models.Model(inputs, outputs)
+
 class SingleStreamStrategy:
 
     '''
@@ -36,11 +52,12 @@ class SingleStreamStrategy:
         self.passage_time = passage_time
 
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
+        self.selection_model = build_resnet50_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
-            model=self.model
+            model=self.selection_model
         )
 
         self.image_capture = ImageCapture()
@@ -127,11 +144,12 @@ class BatchStreamStrategy:
         self.passage_time = passage_time
 
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
+        self.selection_model = build_resnet50_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
-            model=self.model
+            model=self.selection_model
         )
 
         self.image_capture = ImageCapture()
