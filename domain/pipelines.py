@@ -22,10 +22,10 @@ def build_resnet50_selection_model():
     base_model = keras.applications.ResNet50(
         weights='imagenet',
         include_top=False,
-        input_shape=(224, 224, 3)
+        input_shape=(300, 300, 3)
     )
     base_model.trainable = False
-    inputs = keras.Input(shape=(224, 224, 3))
+    inputs = keras.Input(shape=(300, 300, 3))
     x = base_model(inputs, training=False)
     x = layers.GlobalAveragePooling2D()(x)
     x = layers.Dense(128, activation='relu')(x)
