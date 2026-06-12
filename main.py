@@ -2,10 +2,12 @@ from datetime import datetime
 import sys, os
 
 # TensorFlow configuration — MUST be before any TF/Keras import
+# Antes: env vars ficavam em domain/pipelines.py:6-7, DEPOIS do `import keras`,
+# logo nunca tiveram efeito. TF rodava com o default (4 threads por inferência).
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["KERAS_BACKEND"] = "tensorflow"
-os.environ["TF_INTRA_OP_PARALLELISM_THREADS"] = "1"
-os.environ["TF_INTER_OP_PARALLELISM_THREADS"] = "1"
+os.environ["TF_INTRA_OP_PARALLELISM_THREADS"] = "1"   # era default (= núcleos, 4)
+os.environ["TF_INTER_OP_PARALLELISM_THREADS"] = "1"   # era default (= núcleos, 4)
 
 from infra.profiling.agents import CPUMonitor, RAMMonitor, GPUMonitor
 from domain.pipelines import SingleStreamStrategy, BatchStreamStrategy, MASStrategy

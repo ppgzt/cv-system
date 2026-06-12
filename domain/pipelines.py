@@ -364,5 +364,7 @@ class MASStrategy:
             reactor.listenTCP(agent.aid.port, agent.agentInstance)
 
         display_message("MASStrategy", "Todos os agentes iniciados. Reator Twisted rodando.")
+        # Antes: pool default do Twisted (min=5, max=10 threads) em 4 cores do Pi 5
+        # causava context switching excessivo com deferToThread concorrentes.
         reactor.getThreadPool().adjustPoolsize(minthreads=2, maxthreads=4)
         reactor.run()
