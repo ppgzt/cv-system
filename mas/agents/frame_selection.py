@@ -147,7 +147,23 @@ class FrameSelectionAgent(Agent):
         super().react(message)
         if message.performative != ACLMessage.INFORM:
             return
-            
+
+        if message.ontology == "pipeline-complete":
+            # Force batch-ready for any animal that still has pending expected frames
+            with self._lock:
+                remaining = list(self.expected_frames.keys())
+            for animal_id in remaining:
+                self._check_batch_ready(animal_id)
+
+            # Forward pipeline-complete to predict_weight_agent
+            out = ACLMessage(ACLMessage.INFORM)
+            out.set_ontology("pipeline-complete")
+            out.add_receiver(AID(self.next_agent_aid))
+            out.set_content(message.content)
+            self.send(out)
+            display_message(self.aid.name, f"[FLUSH] Pipeline-complete: forced {len(remaining)} remaining batches.")
+            return
+
         if message.ontology == "passage-complete":
             try:
                 data = json.loads(message.content)

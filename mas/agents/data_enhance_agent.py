@@ -85,6 +85,17 @@ class DataEnhanceAgent(Agent):
         super().react(message)
         if message.performative != ACLMessage.INFORM:
             return
+
+        # Forward pipeline-complete signal to the next agent
+        if message.ontology == "pipeline-complete":
+            out = ACLMessage(ACLMessage.INFORM)
+            out.set_ontology("pipeline-complete")
+            out.add_receiver(AID(self.next_agent_aid))
+            out.set_content(message.content)
+            self.send(out)
+            display_message(self.aid.name, "[FLUSH] Pipeline-complete forwarded.")
+            return
+
         if message.ontology != "frame-capture":
             return
         payload = self._parse_payload(message)

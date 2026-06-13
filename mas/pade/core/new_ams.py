@@ -77,7 +77,7 @@ class ComportVerifyConnTimed(TimedBehaviour):
             table.append([agent_name, str(delta.total_seconds())])
             if delta.total_seconds() > 20.0:
                 desconnect_agents.append(agent_name)
-                self.agent.agentInstance.table.pop(agent_name)
+                self.agent.agentInstance.table.pop(agent_name, None)
                 display_message(self.agent.aid.name, 'Agent {} disconnected.'.format(agent_name))    
 
         for agent_name in desconnect_agents:

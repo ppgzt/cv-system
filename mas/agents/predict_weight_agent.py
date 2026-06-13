@@ -90,21 +90,52 @@ class PredictWeightAgent(Agent):
 
     def _finalize_animal(self, animal_id):
         from twisted.internet import reactor
-        
+
         weights = self._predictions.get(animal_id, [])
         if animal_id in self.metrics['animals']:
             predicted_weight = float(np.mean(weights)) if weights else 0.0
             self.metrics['animals'][animal_id]['weight_prediction_final'] = datetime.now().isoformat()
-            
+
             display_message(
                 self.aid.name,
                 f"[FINAL] Animal {animal_id} completed. Mean weight: {predicted_weight:.4f} kg"
             )
 
+        # Save metrics incrementally after each animal so data is never lost
+        self._save_metrics()
+
         if str(animal_id) == str(self.herd_size):
-            self._save_metrics()
-            display_message(self.aid.name, "[SHUTDOWN] All animals evaluated. Stopping reactor in 1s...")
-            reactor.callLater(1.0, reactor.stop)
+            self._shutdown()
+
+    def _flush_and_shutdown(self):
+        """Force-process remaining incomplete batches, save metrics, and stop."""
+        from twisted.internet import reactor
+
+        display_message(self.aid.name, "[FLUSH] Pipeline complete — processing remaining batches...")
+
+        # Process any batch that has images, even if incomplete
+        for animal_id in list(self.batch_imgs.keys()):
+            imgs = self.batch_imgs.get(animal_id, [])
+            if imgs:
+                total = len(imgs)
+                display_message(
+                    self.aid.name,
+                    f"[FLUSH-BATCH] Animal {animal_id}: running inference on {total} available frames"
+                )
+                start_ts = datetime.now().isoformat()
+                d = deferToThread(self.inference_adapter.predict, imgs)
+                d.addCallback(self._on_batch_inference_success, animal_id, total, start_ts)
+                d.addErrback(self._on_inference_error)
+
+        # Schedule shutdown after all pending inference threads complete
+        reactor.callLater(3.0, self._shutdown)
+
+    def _shutdown(self):
+        """Save metrics and stop the reactor."""
+        from twisted.internet import reactor
+        self._save_metrics()
+        display_message(self.aid.name, "[SHUTDOWN] All animals evaluated. Stopping reactor in 1s...")
+        reactor.callLater(1.0, reactor.stop)
 
     def _save_metrics(self):
         reports_dir = f"infra/reports/{self.pid}"
@@ -195,7 +226,11 @@ class PredictWeightAgent(Agent):
         super().react(message)
         if message.performative != ACLMessage.INFORM:
             return
-            
+
+        if message.ontology == "pipeline-complete":
+            self._flush_and_shutdown()
+            return
+
         if message.ontology == "batch-ready":
             try:
                 data = json.loads(message.content)
@@ -287,10 +322,11 @@ class PredictWeightAgent(Agent):
             if self.mode == "single":
                 self._finalize_animal(animal_id)
             else:
-                # We don't have total_frames here, but this branch is rarely 
-                # reached before the batch-ready signal in normal flow.
-                # If it is, we use a default or wait for the signal.
-                pass
+                total_frames = 0
+                animal_entry = self.metrics['animals'].get(animal_id) or self.metrics['animals'].get(str(animal_id))
+                if animal_entry:
+                    total_frames = animal_entry.get('total_of_images', 0)
+                self._process_batch(animal_id, total_frames)
 
     def on_start(self):
         super().on_start()
