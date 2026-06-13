@@ -29,13 +29,13 @@ class FrameSelectionAgent(Agent):
 
     def __init__(
         self,
-        aid,
+        self_aid,
         frame_selection_adapter: FrameSelectionAdapter,
         next_agent_aid: str,
         capture_agent_aid: str = None,
         debug: bool = False,
     ):
-        super().__init__(aid=aid, debug=debug)
+        super().__init__(aid=self_aid, debug=debug)
         self.frame_selection_adapter = frame_selection_adapter
         self.next_agent_aid = next_agent_aid
         self.capture_agent_aid = capture_agent_aid
@@ -47,6 +47,9 @@ class FrameSelectionAgent(Agent):
         self.processed_frames = {}
         self.suitable_frames = {}
         self.capture_metrics_buffer = {}
+        self.pending_evaluations = 0
+        self.pipeline_complete_received = False
+        self.pipeline_complete_content = None
 
     def _parse_payload(self, message) -> dict | None:
         try:
@@ -120,12 +123,38 @@ class FrameSelectionAgent(Agent):
             self._forward_frame(payload)
             
         self._check_batch_ready(animal_id)
+        self._check_eval_completion()
+
+    def _on_selection_complete_failed(self, payload: dict):
+        frame_id = payload["frame_id"]
+        animal_id = payload["animal_id"]
+        with self._lock:
+            self.processed_frames[animal_id] = self.processed_frames.get(animal_id, 0) + 1
+        self.discarded += 1
+        display_message(self.aid.name, f"frame_id={frame_id} DISCARDED (not found in buffer).")
+        self._check_batch_ready(animal_id)
 
     def _on_selection_error(self, failure):
         display_message(
             self.aid.name,
             f"[ERROR] Evaluation failed: {failure.getErrorMessage()}",
         )
+        self._check_eval_completion()
+
+    def _check_eval_completion(self):
+        with self._lock:
+            self.pending_evaluations -= 1
+            is_done = (self.pending_evaluations <= 0 and self.pipeline_complete_received)
+        if is_done:
+            self._forward_pipeline_complete()
+
+    def _forward_pipeline_complete(self):
+        out = ACLMessage(ACLMessage.INFORM)
+        out.set_ontology("pipeline-complete")
+        out.add_receiver(AID(self.next_agent_aid))
+        out.set_content(self.pipeline_complete_content)
+        self.send(out)
+        display_message(self.aid.name, "[FLUSH] Pipeline-complete forwarded after evaluating all pending frames.")
 
     def _schedule_evaluation(self, payload: dict):
         elapsed = payload.get("elapsed_time", 0.0)
@@ -136,9 +165,12 @@ class FrameSelectionAgent(Agent):
             
         if img is None:
             display_message(self.aid.name, f"[WARN] Image not found in buffer for {frame_id}")
-            self._on_selection_complete(False, payload)
+            self._on_selection_complete_failed(payload)
             return
             
+        with self._lock:
+            self.pending_evaluations += 1
+
         d = deferToThread(self.frame_selection_adapter.evaluate, elapsed, img)
         d.addCallback(self._on_selection_complete, payload)
         d.addErrback(self._on_selection_error)
@@ -155,13 +187,15 @@ class FrameSelectionAgent(Agent):
             for animal_id in remaining:
                 self._check_batch_ready(animal_id)
 
-            # Forward pipeline-complete to predict_weight_agent
-            out = ACLMessage(ACLMessage.INFORM)
-            out.set_ontology("pipeline-complete")
-            out.add_receiver(AID(self.next_agent_aid))
-            out.set_content(message.content)
-            self.send(out)
-            display_message(self.aid.name, f"[FLUSH] Pipeline-complete: forced {len(remaining)} remaining batches.")
+            with self._lock:
+                self.pipeline_complete_content = message.content
+                self.pipeline_complete_received = True
+                is_done = (self.pending_evaluations <= 0)
+
+            if is_done:
+                self._forward_pipeline_complete()
+            else:
+                display_message(self.aid.name, f"[FLUSH] Received pipeline-complete. Waiting for {self.pending_evaluations} evaluations to finish...")
             return
 
         if message.ontology == "passage-complete":

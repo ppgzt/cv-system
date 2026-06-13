@@ -36,6 +36,9 @@ class DataEnhanceAgent(Agent):
         super().__init__(aid=aid, debug=debug)
         self.data_enhance_adapter = data_enhance_adapter
         self.next_agent_aid = next_agent_aid
+        self.pending_tasks = 0
+        self.pipeline_complete_received = False
+        self.pipeline_complete_content = None
 
     def _parse_payload(self, message) -> dict | None:
         try:
@@ -58,12 +61,27 @@ class DataEnhanceAgent(Agent):
             self.aid.name,
             f"frame_id={payload['frame_id']} enhanced and forwarded.",
         )
+        self._check_task_completion()
 
     def _on_enhance_error(self, failure):
         display_message(
             self.aid.name,
             f"[ERROR] Enhancement failed: {failure.getErrorMessage()}",
         )
+        self._check_task_completion()
+
+    def _check_task_completion(self):
+        self.pending_tasks -= 1
+        if self.pending_tasks <= 0 and self.pipeline_complete_received:
+            self._forward_pipeline_complete()
+
+    def _forward_pipeline_complete(self):
+        out = ACLMessage(ACLMessage.INFORM)
+        out.set_ontology("pipeline-complete")
+        out.add_receiver(AID(self.next_agent_aid))
+        out.set_content(self.pipeline_complete_content)
+        self.send(out)
+        display_message(self.aid.name, "[FLUSH] Pipeline-complete forwarded after enhancing all pending frames.")
 
     def _schedule_enhance(self, payload: dict):
         frame_id = payload["frame_id"]
@@ -77,6 +95,7 @@ class DataEnhanceAgent(Agent):
             FRAME_BUFFER[frame_id] = enhanced
             return True
 
+        self.pending_tasks += 1
         d = deferToThread(_enhance_and_store)
         d.addCallback(self._on_enhance_done, payload)
         d.addErrback(self._on_enhance_error)
@@ -86,14 +105,14 @@ class DataEnhanceAgent(Agent):
         if message.performative != ACLMessage.INFORM:
             return
 
-        # Forward pipeline-complete signal to the next agent
+        # Forward pipeline-complete signal to the next agent once all tasks complete
         if message.ontology == "pipeline-complete":
-            out = ACLMessage(ACLMessage.INFORM)
-            out.set_ontology("pipeline-complete")
-            out.add_receiver(AID(self.next_agent_aid))
-            out.set_content(message.content)
-            self.send(out)
-            display_message(self.aid.name, "[FLUSH] Pipeline-complete forwarded.")
+            self.pipeline_complete_content = message.content
+            self.pipeline_complete_received = True
+            if self.pending_tasks <= 0:
+                self._forward_pipeline_complete()
+            else:
+                display_message(self.aid.name, f"[FLUSH] Received pipeline-complete. Waiting for {self.pending_tasks} enhancements to finish...")
             return
 
         if message.ontology != "frame-capture":

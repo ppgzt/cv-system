@@ -108,15 +108,14 @@ class CaptureBehaviour(TimedBehaviour):
         if elapsed >= cycle:
             self.current_animal_id += 1
             if self.current_animal_id > self.herd_size:
-                # Notify downstream agents that the pipeline source is done
-                for aid_name in [self.next_agent_aid, self.selection_agent_aid]:
-                    msg = ACLMessage(ACLMessage.INFORM)
-                    msg.set_ontology("pipeline-complete")
-                    msg.add_receiver(AID(aid_name))
-                    msg.set_content(json.dumps({
-                        "total_animals": self.herd_size,
-                    }))
-                    self.agent.send(msg)
+                # Notify the next agent in the pipeline that the source is done
+                msg = ACLMessage(ACLMessage.INFORM)
+                msg.set_ontology("pipeline-complete")
+                msg.add_receiver(AID(self.next_agent_aid))
+                msg.set_content(json.dumps({
+                    "total_animals": self.herd_size,
+                }))
+                self.agent.send(msg)
                 display_message(self.agent.aid.name, f"[FINISH] Completed capturing {self.herd_size} animals.")
                 self._finished = True
                 return

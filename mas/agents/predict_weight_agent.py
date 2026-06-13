@@ -59,6 +59,8 @@ class PredictWeightAgent(Agent):
             'load_model_final': None,
             'animals': {}
         }
+        self.pending_inferences = 0
+        self.pipeline_complete_received = False
 
     def _parse_payload(self, message) -> dict | None:
         try:
@@ -89,8 +91,6 @@ class PredictWeightAgent(Agent):
         }
 
     def _finalize_animal(self, animal_id):
-        from twisted.internet import reactor
-
         weights = self._predictions.get(animal_id, [])
         if animal_id in self.metrics['animals']:
             predicted_weight = float(np.mean(weights)) if weights else 0.0
@@ -104,14 +104,12 @@ class PredictWeightAgent(Agent):
         # Save metrics incrementally after each animal so data is never lost
         self._save_metrics()
 
-        if str(animal_id) == str(self.herd_size):
-            self._shutdown()
-
     def _flush_and_shutdown(self):
         """Force-process remaining incomplete batches, save metrics, and stop."""
-        from twisted.internet import reactor
-
         display_message(self.aid.name, "[FLUSH] Pipeline complete — processing remaining batches...")
+
+        with self._lock:
+            self.pipeline_complete_received = True
 
         # Process any batch that has images, even if incomplete
         for animal_id in list(self.batch_imgs.keys()):
@@ -123,12 +121,24 @@ class PredictWeightAgent(Agent):
                     f"[FLUSH-BATCH] Animal {animal_id}: running inference on {total} available frames"
                 )
                 start_ts = datetime.now().isoformat()
+                with self._lock:
+                    self.pending_inferences += 1
                 d = deferToThread(self.inference_adapter.predict, imgs)
                 d.addCallback(self._on_batch_inference_success, animal_id, total, start_ts)
                 d.addErrback(self._on_inference_error)
 
-        # Schedule shutdown after all pending inference threads complete
-        reactor.callLater(3.0, self._shutdown)
+        self._check_shutdown_readiness()
+
+    def _check_shutdown_readiness(self):
+        with self._lock:
+            is_done = (self.pending_inferences <= 0 and self.pipeline_complete_received)
+        if is_done:
+            self._shutdown()
+
+    def _decrement_pending_inferences(self):
+        with self._lock:
+            self.pending_inferences -= 1
+        self._check_shutdown_readiness()
 
     def _shutdown(self):
         """Save metrics and stop the reactor."""
@@ -163,6 +173,7 @@ class PredictWeightAgent(Agent):
             f"[PREDICTION] animal_id={animal_id} frame_id={frame_id} weight={weight:.4f} kg",
         )
         self._check_batch_sync(animal_id)
+        self._decrement_pending_inferences()
 
     def _on_batch_inference_success(self, result, animal_id: int, total_frames: int, start_ts: str):
         self._total_inferences += 1
@@ -174,12 +185,14 @@ class PredictWeightAgent(Agent):
         final_ts = datetime.now().isoformat()
         self._record_batch_metric(animal_id, total_frames, start_ts, final_ts)
         self._finalize_animal(animal_id)
+        self._decrement_pending_inferences()
 
     def _on_inference_error(self, failure):
         display_message(
             self.aid.name,
             f"[ERROR] Inference failed: {failure.getErrorMessage()}",
         )
+        self._decrement_pending_inferences()
 
     def _schedule_inference(self, payload: dict):
         frame_id = payload["frame_id"]
@@ -199,13 +212,12 @@ class PredictWeightAgent(Agent):
             }
 
         start_ts = datetime.now().isoformat()
+        with self._lock:
+            self.pending_inferences += 1
         d = deferToThread(self.inference_adapter.predict, [img])
         d.addCallback(self._on_single_inference_success, payload, start_ts)
         d.addErrback(self._on_inference_error)
         
-        # Pseudo finalize evaluation if single (cannot guarantee exact last frame easily unless synced)
-        # But single stream doesn't strictly log per-animal final metric properly until gap.
-
     def _process_batch(self, animal_id: int, total_frames: int):
         with self._lock:
             imgs = self.batch_imgs.pop(animal_id, [])
@@ -218,6 +230,8 @@ class PredictWeightAgent(Agent):
 
         display_message(self.aid.name, f"[BATCH INFERENCE] Running full network on {len(imgs)} frames for animal {animal_id}")
         start_ts = datetime.now().isoformat()
+        with self._lock:
+            self.pending_inferences += 1
         d = deferToThread(self.inference_adapter.predict, imgs)
         d.addCallback(self._on_batch_inference_success, animal_id, total_frames, start_ts)
         d.addErrback(self._on_inference_error)
@@ -336,7 +350,7 @@ class PredictWeightAgent(Agent):
         # Load model in a background thread to avoid blocking the reactor
         d = deferToThread(self.inference_adapter.load_model)
         d.addCallback(self._on_model_loaded)
-        d.addErrback(self._on_inference_error)
+        d.addErrback(self._on_model_load_error)
 
     def _on_model_loaded(self, _):
         self.metrics['load_model_final'] = datetime.now().isoformat()
@@ -349,6 +363,12 @@ class PredictWeightAgent(Agent):
             msg.add_receiver(AID(self.capture_agent_aid))
             msg.set_content(json.dumps({"agent": self.aid.name}))
             self.send(msg)
+
+    def _on_model_load_error(self, failure):
+        display_message(
+            self.aid.name,
+            f"[ERROR] Failed to load model: {failure.getErrorMessage()}",
+        )
 
     def get_predictions_summary(self) -> dict:
         """Return per-animal prediction summaries (mean weights)."""
