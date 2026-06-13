@@ -29,13 +29,13 @@ class FrameSelectionAgent(Agent):
 
     def __init__(
         self,
-        self_aid,
+        aid,
         frame_selection_adapter: FrameSelectionAdapter,
         next_agent_aid: str,
         capture_agent_aid: str = None,
         debug: bool = False,
     ):
-        super().__init__(aid=self_aid, debug=debug)
+        super().__init__(aid=aid, debug=debug)
         self.frame_selection_adapter = frame_selection_adapter
         self.next_agent_aid = next_agent_aid
         self.capture_agent_aid = capture_agent_aid
