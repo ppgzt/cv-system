@@ -23,6 +23,7 @@ O agente também grava as últimas métricas em um blackboard em memória
 para uso futuro por outros agentes do MAS.
 """
 
+import csv
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,9 @@ from pade.misc.utility import display_message
 # Import monitors from mas.utils (Adapter approach)
 from mas.utils.cpu_monitor import CPUMonitor
 from mas.utils.ram_monitor import RAMMonitor
+
+# Shared in-process state for queue-depth observability
+from mas.utils.globals import FRAME_BUFFER, QUEUE_STATS, QUEUE_STATS_LOCK
 
 # Blackboard Adapter
 from mas.adapters.blackboard_adapter import BlackboardAdapter, InMemoryBlackboardAdapter
@@ -69,6 +73,54 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
         snapshot = self._build_snapshot()
         if snapshot is not None:
             self.blackboard.write_metrics(snapshot)
+        # Queue-depth observability for the λ×μ FPS study. Does NOT touch
+        # metrics.json — writes its own CSV alongside the CPU/RAM reports.
+        self._write_queue_depth()
+
+    def _write_queue_depth(self):
+        agent = self.agent
+        try:
+            report_dir = agent.reports_dir / agent.pid
+            report_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return
+
+        now = time.time()
+        frame_buffer_size = len(FRAME_BUFFER)
+
+        with QUEUE_STATS_LOCK:
+            stats = dict(QUEUE_STATS)
+        # Mirror the authoritative frame-buffer size back so any reader sees
+        # a consistent value.
+        with QUEUE_STATS_LOCK:
+            QUEUE_STATS["frame_buffer_size"] = frame_buffer_size
+
+        row = [
+            f"{now:.3f}",
+            frame_buffer_size,
+            stats.get("pending_enhance", 0),
+            stats.get("pending_eval", 0),
+            stats.get("pending_inference", 0),
+            stats.get("finalized_animals", 0),
+        ]
+
+        csv_path = report_dir / "queue_depth.csv"
+        write_header = not csv_path.exists()
+        try:
+            with open(csv_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                if write_header:
+                    writer.writerow([
+                        "timestamp",
+                        "frame_buffer_size",
+                        "pending_enhance",
+                        "pending_eval",
+                        "pending_inference",
+                        "finalized_animals",
+                    ])
+                writer.writerow(row)
+        except Exception as e:
+            display_message(agent.aid.name, f"[WARN] queue_depth.csv write failed: {e}")
 
     def _build_snapshot(self) -> dict | None:
         cpu_mon = self.agent.cpu_monitor

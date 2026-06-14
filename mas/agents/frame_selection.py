@@ -21,7 +21,7 @@ from pade.core.agent import Agent
 from pade.misc.utility import display_message
 
 from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
-from mas.utils.globals import FRAME_BUFFER
+from mas.utils.globals import FRAME_BUFFER, update_queue_stat
 
 
 class FrameSelectionAgent(Agent):
@@ -50,6 +50,10 @@ class FrameSelectionAgent(Agent):
         self.pending_evaluations = 0
         self.pipeline_complete_received = False
         self.pipeline_complete_content = None
+        # Idempotent batch-ready: fire at most once per animal. Prevents late
+        # frames (arriving after the batch was already forwarded) from
+        # re-triggering and orphaning state. At 1 FPS each animal fires once.
+        self._finalized = set()
 
     def _parse_payload(self, message) -> dict | None:
         try:
@@ -70,30 +74,37 @@ class FrameSelectionAgent(Agent):
         self.send(out)
 
     def _check_batch_ready(self, animal_id: int):
-        """Verify if all frames for the animal have been processed and fire batch-ready."""
+        """Verify if all frames for the animal have been processed and fire batch-ready.
+
+        Fires at most once per animal (idempotent via `_finalized`). State is
+        intentionally NOT popped so late frames — arriving after the batch was
+        forwarded — simply re-increment counters harmlessly and hit the
+        `_finalized` guard instead of re-creating orphaned keys."""
         with self._lock:
+            if animal_id in self._finalized:
+                return
             expected = self.expected_frames.get(animal_id)
             processed = self.processed_frames.get(animal_id, 0)
-            
+
             if expected is not None and processed >= expected:
-                msg = ACLMessage(ACLMessage.INFORM)
-                msg.set_ontology("batch-ready")
-                msg.add_receiver(AID(self.next_agent_aid))
-                msg.set_content(json.dumps({
-                    "animal_id": animal_id,
-                    "suitable_count": self.suitable_frames.get(animal_id, 0),
-                    "total_frames": expected,
-                    "capture_metrics": self.capture_metrics_buffer.get(animal_id, {})
-                }, ensure_ascii=True))
-                self.send(msg)
-                
-                # Cleanup state
-                self.expected_frames.pop(animal_id, None)
-                self.processed_frames.pop(animal_id, None)
-                self.suitable_frames.pop(animal_id, None)
-                self.capture_metrics_buffer.pop(animal_id, None)
-                
-                display_message(self.aid.name, f"[BATCH READY] Sent animal_id={animal_id} to Predict!")
+                self._finalized.add(animal_id)
+                suitable = self.suitable_frames.get(animal_id, 0)
+                capture_metrics = self.capture_metrics_buffer.get(animal_id, {})
+            else:
+                return
+
+        msg = ACLMessage(ACLMessage.INFORM)
+        msg.set_ontology("batch-ready")
+        msg.add_receiver(AID(self.next_agent_aid))
+        msg.set_content(json.dumps({
+            "animal_id": animal_id,
+            "suitable_count": suitable,
+            "total_frames": expected,
+            "capture_metrics": capture_metrics
+        }, ensure_ascii=True))
+        self.send(msg)
+
+        display_message(self.aid.name, f"[BATCH READY] Sent animal_id={animal_id} to Predict!")
 
     def _on_selection_complete(self, suitable: bool, payload: dict):
         frame_id = payload["frame_id"]
@@ -144,7 +155,9 @@ class FrameSelectionAgent(Agent):
     def _check_eval_completion(self):
         with self._lock:
             self.pending_evaluations -= 1
+            current = self.pending_evaluations
             is_done = (self.pending_evaluations <= 0 and self.pipeline_complete_received)
+        update_queue_stat("pending_eval", current)
         if is_done:
             self._forward_pipeline_complete()
 
@@ -170,6 +183,8 @@ class FrameSelectionAgent(Agent):
             
         with self._lock:
             self.pending_evaluations += 1
+            current = self.pending_evaluations
+        update_queue_stat("pending_eval", current)
 
         d = deferToThread(self.frame_selection_adapter.evaluate, elapsed, img)
         d.addCallback(self._on_selection_complete, payload)

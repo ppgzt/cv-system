@@ -20,7 +20,7 @@ from pade.core.agent import Agent
 from pade.misc.utility import display_message
 
 from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
-from mas.utils.globals import FRAME_BUFFER
+from mas.utils.globals import FRAME_BUFFER, update_queue_stat
 
 
 class DataEnhanceAgent(Agent):
@@ -72,6 +72,7 @@ class DataEnhanceAgent(Agent):
 
     def _check_task_completion(self):
         self.pending_tasks -= 1
+        update_queue_stat("pending_enhance", self.pending_tasks)
         if self.pending_tasks <= 0 and self.pipeline_complete_received:
             self._forward_pipeline_complete()
 
@@ -96,6 +97,7 @@ class DataEnhanceAgent(Agent):
             return True
 
         self.pending_tasks += 1
+        update_queue_stat("pending_enhance", self.pending_tasks)
         d = deferToThread(_enhance_and_store)
         d.addCallback(self._on_enhance_done, payload)
         d.addErrback(self._on_enhance_error)

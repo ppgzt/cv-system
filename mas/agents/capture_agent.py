@@ -36,7 +36,8 @@ from pade.core.agent import Agent
 from pade.misc.utility import display_message
 
 from mas.adapters.capture_adapter import CaptureAdapter
-from mas.utils.globals import FRAME_BUFFER
+from mas.utils.globals import FRAME_BUFFER, CAPTURE_MANIFEST
+from mas.utils import globals as mas_globals
 
 
 class CaptureBehaviour(TimedBehaviour):
@@ -116,6 +117,12 @@ class CaptureBehaviour(TimedBehaviour):
                     "total_animals": self.herd_size,
                 }))
                 self.agent.send(msg)
+                # Reliable in-process completion signal. The FIPA send() above is
+                # fire-and-forget and can be silently dropped under load; the
+                # PredictWeightAgent watchdog reads CAPTURE_DONE_TS directly from
+                # this shared module namespace (no network hop) to know capture
+                # has finished, regardless of whether the message survives.
+                mas_globals.CAPTURE_DONE_TS = time.time()
                 display_message(self.agent.aid.name, f"[FINISH] Completed capturing {self.herd_size} animals.")
                 self._finished = True
                 return
@@ -145,6 +152,10 @@ class CaptureBehaviour(TimedBehaviour):
             self.first_capture = now_iso
         self.last_capture = now_iso
         self.captured_count += 1
+        # Authoritative per-animal capture count. Written directly to the shared
+        # in-process dict (ground truth for the watchdog — survives even when
+        # passage-complete / batch-ready messages are lost under load).
+        CAPTURE_MANIFEST[self.current_animal_id] = self.captured_count
         
         img = self.capture_adapter.get_frame()
         

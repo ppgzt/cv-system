@@ -321,7 +321,9 @@ class MASStrategy:
             mode=self.mode,
             pid=self.pid,
             herd_size=self.herd_size,
-            capture_agent_aid=capture_aid.name
+            capture_agent_aid=capture_aid.name,
+            passage_time=self.passage_time,
+            arrival_time=self.arrival_time,
         )
 
         resource_agent = ResourceManagerAgent(
