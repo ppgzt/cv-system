@@ -7,14 +7,7 @@ class Replicate1DtoNDimChannel:
         self.dim = dim
 
     def transform(self, data: np.array):
-        img_rows, img_cols = data.shape
-        g = np.zeros((img_rows, img_cols, self.dim))
-
-        for i in range(0, data.shape[0]):
-          for j in range(0, data.shape[1]):
-            g[i,j] = [data[i,j]] * self.dim           
-
-        return g
+        return np.repeat(data[:, :, np.newaxis], self.dim, axis=2)
         
 class NoiseRemovalSetMaxValue:
 
@@ -22,15 +15,7 @@ class NoiseRemovalSetMaxValue:
         self.max_value = max_value
 
     def transform(self, data: np.array):
-        g = np.copy(data)
-
-        for i in range(0, data.shape[0]):
-          for j in range(0, data.shape[1]):
-            pos = (i,j)
-            if data[pos] >= self.max_value:
-                g[pos] = self.max_value
-
-        return g
+        return np.minimum(data, self.max_value)
 
 class AdjustScaleWithFixedMaxValue:
 
