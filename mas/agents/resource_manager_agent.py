@@ -36,6 +36,7 @@ from pade.misc.utility import display_message
 # Import monitors from mas.utils (Adapter approach)
 from mas.utils.cpu_monitor import CPUMonitor
 from mas.utils.ram_monitor import RAMMonitor
+from mas.utils.temp_monitor import TempMonitor
 
 # Blackboard Adapter
 from mas.adapters.blackboard_adapter import BlackboardAdapter, InMemoryBlackboardAdapter
@@ -73,12 +74,14 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
     def _build_snapshot(self) -> dict | None:
         cpu_mon = self.agent.cpu_monitor
         ram_mon = self.agent.ram_monitor
+        temp_mon = self.agent.temp_monitor
 
         if cpu_mon is None or ram_mon is None:
             return None
 
         cpu_latest = cpu_mon.get_latest()
         ram_latest = ram_mon.get_latest()
+        temp_latest = temp_mon.get_latest() if temp_mon else None
 
         if cpu_latest is None or ram_latest is None:
             return None
@@ -96,12 +99,16 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
         ram_used = int(ram_latest[3])
         ram_free = int(ram_latest[5])
 
+        # Temperature: [timestamp, temp]
+        temp_val = float(temp_latest[1]) if temp_latest else 0.0
+
         recorded_at_iso = datetime.fromtimestamp(now).isoformat(timespec="microseconds")
 
         metrics = {
             "timestamp": now,
             "cpu_percent": cpu_percent,
             "ram_percent": ram_percent,
+            "temperature": temp_val,
             "cpu_cores": cpu_cores,
             "ram_total": ram_total,
             "ram_available": ram_available,
@@ -141,6 +148,7 @@ class ResourceManagerAgent(Agent):
         self.reports_dir = Path(reports_dir)
         self.cpu_monitor: CPUMonitor | None = None
         self.ram_monitor: RAMMonitor | None = None
+        self.temp_monitor: TempMonitor | None = None
 
         # Blackboard (implementado, não usado na comparação atual)
         self.blackboard = blackboard or InMemoryBlackboardAdapter()
@@ -158,6 +166,7 @@ class ResourceManagerAgent(Agent):
         # Monitores refatorados do MAS — mesma lógica, mesma psutil, mesmo CSV
         self.cpu_monitor = CPUMonitor(pid=self.pid, reports_dir=str(self.reports_dir))
         self.ram_monitor = RAMMonitor(pid=self.pid, reports_dir=str(self.reports_dir))
+        self.temp_monitor = TempMonitor(pid=self.pid, reports_dir=str(self.reports_dir))
 
         # Warmup do CPU (igual baseline: primeira chamada retorna 0.0)
         import psutil
@@ -165,10 +174,11 @@ class ResourceManagerAgent(Agent):
 
         self.cpu_monitor.start()
         self.ram_monitor.start()
+        self.temp_monitor.start()
 
         display_message(
             self.aid.name,
-            f"Monitores iniciados — CPU e RAM a cada 1s (pid={self.pid})",
+            f"Monitores iniciados — CPU, RAM e Temperatura a cada 1s (pid={self.pid})",
         )
 
         # Blackboard publisher (implementado, uso futuro)
@@ -195,5 +205,9 @@ class ResourceManagerAgent(Agent):
         if self.ram_monitor:
             self.ram_monitor.stop()
             self.ram_monitor.join()
+
+        if self.temp_monitor:
+            self.temp_monitor.stop()
+            self.temp_monitor.join()
 
         display_message(self.aid.name, "Monitores parados — CSVs gravados.")
