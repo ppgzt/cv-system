@@ -1,4 +1,4 @@
-import os, keras, time, json
+import os, time, json
 import numpy as np
 
 from datetime import datetime
@@ -13,22 +13,6 @@ from domain.modules.frame_selection import FrameSelection
 from domain.modules.image_capture   import ImageCapture
 from domain.modules.predict_weight  import PredictWeight
 from domain.modules.data_enhance    import DataEnhance
-
-def build_mobilenetv2_selection_model():
-    from keras import layers, models
-    base_model = keras.applications.MobileNetV2(
-        weights='imagenet',
-        include_top=False,
-        input_shape=(300, 300, 3)
-    )
-    base_model.trainable = False
-    inputs = keras.Input(shape=(300, 300, 3))
-    x = base_model(inputs, training=False)
-    x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(128, activation='relu')(x)
-    x = layers.Dropout(0.5)(x)
-    outputs = layers.Dense(2, activation='softmax')(x)
-    return models.Model(inputs, outputs)
 
 class SingleStreamStrategy:
 
@@ -48,18 +32,18 @@ class SingleStreamStrategy:
         self.arrival_time = arrival_time
         self.passage_time = passage_time
 
-        self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
-        self.selection_model = build_mobilenetv2_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(
-            suitable_window=fselection_window, 
-            model=self.selection_model
+            model_path='infra/models/frame_selector.tflite',
+            suitable_window=fselection_window,
         )
 
         self.image_capture = ImageCapture()
         self.data_enhance = DataEnhance()
-        self.predict_weight = PredictWeight(model=self.model)
+        self.predict_weight = PredictWeight(
+            model_path='infra/models/sheep_weight_predictor.tflite'
+        )
 
     def run(self):
         self.metrics['animals'] = {}
@@ -86,8 +70,8 @@ class SingleStreamStrategy:
                 img = self.image_capture.get_frame()
                 last_image_capture = datetime.now().isoformat()
 
-                img = self.data_enhance.run(img)
-                
+                enhanced = self.data_enhance.run(img)
+
                 suitable = self.frame_selection.evaluate(
                     elapsed_time=elapsed_time,
                     img=img
@@ -98,7 +82,7 @@ class SingleStreamStrategy:
                         'weight_prediction_start':datetime.now().isoformat()
                     }
 
-                    weight = self.predict_weight.predict(imgs=[img])[0][0]
+                    weight = self.predict_weight.predict(imgs=[enhanced])[0][0]
                     weights.append(weight)
 
                     inference_metrics['weight_prediction_final'] = datetime.now().isoformat()
@@ -140,18 +124,18 @@ class BatchStreamStrategy:
         self.arrival_time = arrival_time
         self.passage_time = passage_time
 
-        self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
-        self.selection_model = build_mobilenetv2_selection_model()
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         self.frame_selection = FrameSelection(
-            suitable_window=fselection_window, 
-            model=self.selection_model
+            model_path='infra/models/frame_selector.tflite',
+            suitable_window=fselection_window,
         )
 
         self.image_capture = ImageCapture()
         self.data_enhance = DataEnhance()
-        self.predict_weight = PredictWeight(model=self.model)
+        self.predict_weight = PredictWeight(
+            model_path='infra/models/sheep_weight_predictor.tflite'
+        )
 
     def run(self):
         self.metrics['animals'] = {}
@@ -179,11 +163,11 @@ class BatchStreamStrategy:
                 img = self.image_capture.get_frame()
                 last_image_capture = datetime.now().isoformat()
 
-                img = self.data_enhance.run(img)
+                enhanced = self.data_enhance.run(img)
 
                 suitable = self.frame_selection.evaluate(elapsed_time=elapsed_time, img=img)
                 if suitable:
-                    imgs.append(img)
+                    imgs.append(enhanced)
                     s += 1
 
                 elapsed_time = (datetime.now() - start_at).total_seconds()
@@ -217,11 +201,13 @@ class MASStrategy:
 
     Wires the 4 PADE agents into a linear pipeline:
 
-        CaptureAgent -> DataEnhanceAgent -> FrameSelectionAgent -> PredictWeightAgent
+        CaptureAgent -> FrameSelectionAgent -> DataEnhanceAgent -> PredictWeightAgent
 
-    All image data flows through FRAME_BUFFER (in-memory dict) keyed by
-    frame_id.  FIPA-ACL messages carry only lightweight JSON metadata
-    (frame_id, animal_id, elapsed_time).
+    Only raw depth sits in FRAME_BUFFER until selection; DataEnhance runs only
+    on suitable frames (overwriting the raw with the enhanced version).  FIPA-ACL
+    messages carry only lightweight JSON metadata (frame_id, animal_id,
+    elapsed_time); the batch-ready control signal skips DataEnhance and goes
+    straight FrameSelection -> PredictWeight.
 
     The reactor is stopped by CaptureAgent when all animals have been
     processed.
@@ -291,24 +277,25 @@ class MASStrategy:
         predict_aid       = aid("predict_weight_agent", 3)
         rm_aid            = aid("resource_manager_agent", 6)
 
-        model_path = "infra/models/model_run1_epoch029.keras"
+        weight_model_path = "infra/models/sheep_weight_predictor.tflite"
+        selection_model_path = "infra/models/frame_selector.tflite"
 
         # 4. Adapters (shared domain logic, parity with baseline)
         capture_adapter    = CaptureAdapter()
         enhance_adapter    = DataEnhanceAdapter()
         selection_adapter  = FrameSelectionAdapter(
             suitable_window=self.fselection_window,
-            model_path=model_path,
+            model_path=selection_model_path,
         )
 
         # We pass the path to allow lazy/async loading in the agent
-        inference_adapter = InferenceAdapter(model_path)
+        inference_adapter = InferenceAdapter(weight_model_path)
 
         # 5. Agents
         capture_agent = CaptureAgent(
             aid=capture_aid,
             capture_adapter=capture_adapter,
-            next_agent_aid=enhance_aid.name,
+            next_agent_aid=selection_aid.name,
             selection_agent_aid=selection_aid.name,
             interval_seconds=self.fselection_time,
             herd_size=self.herd_size,
@@ -320,13 +307,14 @@ class MASStrategy:
         enhance_agent = DataEnhanceAgent(
             aid=enhance_aid,
             data_enhance_adapter=enhance_adapter,
-            next_agent_aid=selection_aid.name,
+            next_agent_aid=predict_aid.name,
         )
 
         selection_agent = FrameSelectionAgent(
             aid=selection_aid,
             frame_selection_adapter=selection_adapter,
-            next_agent_aid=predict_aid.name,
+            next_agent_aid=enhance_aid.name,
+            predict_agent_aid=predict_aid.name,
             capture_agent_aid=capture_aid.name
         )
 

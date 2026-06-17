@@ -1,10 +1,11 @@
 """Data Enhance Agent — applies image transformations via DataEnhanceAdapter.
 
-Receives a FIPA INFORM from CaptureAgent containing only a frame key and
-metadata.  Pulls the raw image from FRAME_BUFFER, enhances it in a
-delegated thread (deferToThread), overwrites the same key in FRAME_BUFFER
-with the enhanced version, and forwards the *unchanged* metadata payload
-to FrameSelectionAgent.
+Receives a FIPA INFORM from FrameSelectionAgent (ontology "frame-selected")
+containing only a frame key and metadata — only SUITABLE frames reach here.
+Pulls the raw image from FRAME_BUFFER, enhances it in a delegated thread
+(deferToThread), overwrites the same key in FRAME_BUFFER with the enhanced
+version, and forwards the *unchanged* metadata payload to PredictWeightAgent
+(ontology "frame-enhanced").
 
 The elapsed_time in the payload reflects the organic capture moment,
 unaffected by processing latency.
@@ -85,7 +86,7 @@ class DataEnhanceAgent(Agent):
         super().react(message)
         if message.performative != ACLMessage.INFORM:
             return
-        if message.ontology != "frame-capture":
+        if message.ontology != "frame-selected":
             return
         payload = self._parse_payload(message)
         if not payload:

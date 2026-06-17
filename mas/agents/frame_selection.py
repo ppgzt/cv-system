@@ -1,19 +1,22 @@
 """Frame Selection Agent — gatekeeper that evaluates frame suitability.
 
-Receives enhanced frames from DataEnhanceAgent (ontology "frame-enhanced"),
-evaluates whether the organic elapsed_time falls within the suitable
-window, and either forwards the key to PredictWeightAgent or deletes
-the frame from FRAME_BUFFER to free RAM immediately.
+Receives RAW frames from CaptureAgent (ontology "frame-capture"), runs the
+trained TFLite selector on the raw depth (its own preprocessing), and either
+forwards the suitable key to DataEnhanceAgent (ontology "frame-selected") or
+deletes the raw from FRAME_BUFFER to free RAM immediately.
 
-The evaluation delegates to FrameSelectionAdapter via deferToThread
-because the domain method may include a snooze_duration sleep for
-simulated latency parity with the baseline.
+Control signals: passage-complete (from Capture) sets the expected frame
+count per animal; batch-ready is sent straight to PredictWeightAgent
+(predict_agent_aid) once all frames of an animal are processed.
+
+The evaluation delegates to FrameSelectionAdapter via deferToThread.
 """
 
 import json
 import threading
 
 from twisted.internet.threads import deferToThread
+from twisted.internet.defer import DeferredSemaphore
 
 from pade.acl.aid import AID
 from pade.acl.messages import ACLMessage
@@ -32,21 +35,28 @@ class FrameSelectionAgent(Agent):
         aid,
         frame_selection_adapter: FrameSelectionAdapter,
         next_agent_aid: str,
+        predict_agent_aid: str = None,
         capture_agent_aid: str = None,
         debug: bool = False,
+        verbose: bool = False,
     ):
         super().__init__(aid=aid, debug=debug)
         self.frame_selection_adapter = frame_selection_adapter
-        self.next_agent_aid = next_agent_aid
+        self.next_agent_aid = next_agent_aid        # DataEnhanceAgent (suitable frames)
+        self.predict_agent_aid = predict_agent_aid  # PredictWeightAgent (batch-ready)
         self.capture_agent_aid = capture_agent_aid
+        self.verbose = verbose
         self.discarded = 0
         self.forwarded = 0
         self._lock = threading.Lock()
-        
+        self._inference_semaphore = DeferredSemaphore(1)
+
         self.expected_frames = {}
         self.processed_frames = {}
         self.suitable_frames = {}
         self.capture_metrics_buffer = {}
+        # verbose: matriz de confusão label_real x decisão, por animal
+        self.confusion: dict = {}
 
     def _parse_payload(self, message) -> dict | None:
         try:
@@ -71,11 +81,14 @@ class FrameSelectionAgent(Agent):
         with self._lock:
             expected = self.expected_frames.get(animal_id)
             processed = self.processed_frames.get(animal_id, 0)
-            
+
             if expected is not None and processed >= expected:
+                if self.verbose:
+                    self._log_confusion(animal_id, expected)
+
                 msg = ACLMessage(ACLMessage.INFORM)
                 msg.set_ontology("batch-ready")
-                msg.add_receiver(AID(self.next_agent_aid))
+                msg.add_receiver(AID(self.predict_agent_aid))
                 msg.set_content(json.dumps({
                     "animal_id": animal_id,
                     "suitable_count": self.suitable_frames.get(animal_id, 0),
@@ -83,23 +96,51 @@ class FrameSelectionAgent(Agent):
                     "capture_metrics": self.capture_metrics_buffer.get(animal_id, {})
                 }, ensure_ascii=True))
                 self.send(msg)
-                
+
                 # Cleanup state
                 self.expected_frames.pop(animal_id, None)
                 self.processed_frames.pop(animal_id, None)
                 self.suitable_frames.pop(animal_id, None)
                 self.capture_metrics_buffer.pop(animal_id, None)
-                
+                self.confusion.pop(animal_id, None)
+
                 display_message(self.aid.name, f"[BATCH READY] Sent animal_id={animal_id} to Predict!")
 
-    def _on_selection_complete(self, suitable: bool, payload: dict):
+    def _log_confusion(self, animal_id, total):
+        """Resume label_real x decisão do seletor para o animal (modo verbose)."""
+        cm = self.confusion.get(animal_id, {})
+        suited_pred_ok = cm.get(("suited", True), 0)        # label=suited & suitable
+        suited_pred_no = cm.get(("suited", False), 0)       # label=suited & discarded (FN)
+        nonsuited_as_suited = sum(v for (lbl, dec), v in cm.items() if dec and lbl != "suited")  # FP
+        display_message(
+            self.aid.name,
+            f"[SELECT-SUMMARY] animal={animal_id} total={total} | "
+            f"label 'suited' captados={suited_pred_ok + suited_pred_no} "
+            f"(TP={suited_pred_ok}, FN={suited_pred_no}) | "
+            f"não-suited marcados suitable (FP)={nonsuited_as_suited}",
+        )
+
+    def _on_selection_complete(self, result, payload: dict):
+        suitable, prob = result
         frame_id = payload["frame_id"]
         animal_id = payload["animal_id"]
-        
+        label = payload.get("label")
+        depth_filename = payload.get("depth_filename")
+
+        try:
+            from mas.utils.report_collector import ReportCollector
+            ReportCollector().record_selection(animal_id, depth_filename, label, suitable, prob)
+        except Exception as e:
+            display_message(self.aid.name, f"[REPORT-ERROR] record_selection failed: {e}")
+
         with self._lock:
             self.processed_frames[animal_id] = self.processed_frames.get(animal_id, 0) + 1
             if suitable:
                 self.suitable_frames[animal_id] = self.suitable_frames.get(animal_id, 0) + 1
+            if self.verbose and label is not None:
+                key = (label, bool(suitable))
+                self.confusion.setdefault(animal_id, {})[key] = \
+                    self.confusion.get(animal_id, {}).get(key, 0) + 1
 
         if not suitable:
             self.discarded += 1
@@ -107,18 +148,26 @@ class FrameSelectionAgent(Agent):
                 FRAME_BUFFER.pop(frame_id, None)
             display_message(
                 self.aid.name,
-                f"frame_id={frame_id} DISCARDED (deleted from buffer). "
-                f"Discarded={self.discarded}, Forwarded={self.forwarded}",
+                (f"[SELECT] frame_id={frame_id} animal={animal_id} "
+                 f"label={label} -> DISCARDED (p={prob:.4f}). "
+                 f"Discarded={self.discarded}, Forwarded={self.forwarded}")
+                if self.verbose else
+                (f"frame_id={frame_id} DISCARDED (deleted from buffer). "
+                 f"Discarded={self.discarded}, Forwarded={self.forwarded}"),
             )
         else:
             self.forwarded += 1
             display_message(
                 self.aid.name,
-                f"frame_id={frame_id} SUITABLE. "
-                f"Discarded={self.discarded}, Forwarded={self.forwarded}",
+                (f"[SELECT] frame_id={frame_id} animal={animal_id} "
+                 f"label={label} -> SUITABLE (p={prob:.4f}). "
+                 f"Discarded={self.discarded}, Forwarded={self.forwarded}")
+                if self.verbose else
+                (f"frame_id={frame_id} SUITABLE. "
+                 f"Discarded={self.discarded}, Forwarded={self.forwarded}"),
             )
             self._forward_frame(payload)
-            
+
         self._check_batch_ready(animal_id)
 
     def _on_selection_error(self, failure):
@@ -132,14 +181,16 @@ class FrameSelectionAgent(Agent):
         frame_id = payload.get("frame_id")
         
         with self._lock:
+            # Selector runs on the RAW depth straight from Capture (DataEnhance
+            # now runs downstream, only for suitable frames).
             img = FRAME_BUFFER.get(frame_id)
             
         if img is None:
             display_message(self.aid.name, f"[WARN] Image not found in buffer for {frame_id}")
-            self._on_selection_complete(False, payload)
+            self._on_selection_complete((False, 0.0), payload)
             return
             
-        d = deferToThread(self.frame_selection_adapter.evaluate, elapsed, img)
+        d = self._inference_semaphore.run(deferToThread, self.frame_selection_adapter.evaluate_with_score, elapsed, img)
         d.addCallback(self._on_selection_complete, payload)
         d.addErrback(self._on_selection_error)
 
@@ -164,7 +215,7 @@ class FrameSelectionAgent(Agent):
                 display_message(self.aid.name, f"[ERROR] Parsing passage-complete: {e}")
             return
             
-        if message.ontology != "frame-enhanced":
+        if message.ontology != "frame-capture":
             return
             
         payload = self._parse_payload(message)

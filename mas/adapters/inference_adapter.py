@@ -17,14 +17,14 @@ class InferenceAdapter:
             self.model_path = model_or_path
             self._predictor = None
         else:
-            self._predictor = PredictWeight(model_or_path)
+            # Already a PredictWeight instance (legacy direct injection).
+            self.model_path = None
+            self._predictor = model_or_path
 
     def load_model(self) -> None:
-        """Loads the Keras model. Should be called from a background thread."""
+        """Loads the TFLite weight model. Should be called from a background thread."""
         if self._predictor is None:
-            import keras
-            model = keras.models.load_model(self.model_path)
-            self._predictor = PredictWeight(model)
+            self._predictor = PredictWeight(model_path=self.model_path)
 
     def predict(self, imgs: list) -> np.ndarray:
         if self._predictor is None:

@@ -169,5 +169,7 @@ cython_debug/
 # PADE
 mas/pade/web/data.sqlite
 
-# Outros 
+# Dados 
 /logs
+/data/*
+

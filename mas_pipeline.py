@@ -1,0 +1,195 @@
+"""Pipeline MAS data-driven por tag (paralelo a domain/pipelines.py:MASStrategy).
+
+Diferente do MASStrategy antigo (simulador biológico sintético com
+sample.png + passage/arrival_time fixos), esta versão usa captura
+data-driven: o DatasetCaptureAgent lê os frames depth reais de
+data/exp1/DEPTH/<tag>/, ritmados por FPS (nearest-neighbor no
+relative_time_ms), com o label ground-truth viajando nos metadados.
+
+Cadeia de agentes (inalterada):
+    DatasetCaptureAgent -> FrameSelectionAgent -> DataEnhanceAgent -> PredictWeightAgent
+
+Apenas o agente de captura e o critério de término mudam em relação ao
+MASStrategy antigo. main.py, domain/pipelines.py e as estratégias
+SingleStream/Batch seguem intocados.
+"""
+
+import os
+
+
+class MASStrategy:
+    """Strategy Multi-Agent System data-driven por tag.
+
+    O tamanho do rebanho é derivado da quantidade de tags em data/exp1
+    (opcionalmente limitado por `num_animals`). A duração da passagem de
+    cada animal vem do próprio dado (tmax do simulation_index.json).
+    """
+
+    def __init__(
+        self,
+        pid: str,
+        mode: str,
+        fps: float,
+        num_animals: int | None = None,
+        max_passage_seconds: float | None = None,
+        data_root: str = "data/exp1",
+        verbose: bool = False,
+    ):
+        self.pid = pid
+        self.mode = mode
+        self.fps = fps
+        self.num_animals = num_animals
+        self.max_passage_seconds = max_passage_seconds
+        self.data_root = data_root
+        self.verbose = verbose
+
+    def run(self):
+        """Inicia os agentes PADE e o loop principal do reator."""
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+
+        import mas  # noqa: F401  (sys.path hack para pade/infra)
+        from pade.acl.aid import AID
+        from pade.misc.utility import display_message
+        from pade.core.new_ams import AMS
+        from twisted.internet import reactor
+
+        from mas.utils.animal_dataset import AnimalDataset
+        from mas.agents.resource_manager_agent import ResourceManagerAgent
+        from mas.agents.dataset_capture_agent import DatasetCaptureAgent
+        from mas.agents.data_enhance_agent import DataEnhanceAgent
+        from mas.agents.frame_selection import FrameSelectionAgent
+        from mas.agents.predict_weight_agent import PredictWeightAgent
+
+        from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
+        from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
+        from mas.adapters.inference_adapter import InferenceAdapter
+
+        # 1. Dataset + ordem dos animais (alfabética por tag)
+        dataset = AnimalDataset(self.data_root)
+        animal_tags = dataset.list_tags(limit=self.num_animals)
+        if not animal_tags:
+            display_message("MASStrategy", f"[ERROR] nenhuma tag encontrada em {self.data_root}")
+            return
+
+        from mas.utils.report_collector import ReportCollector
+        ReportCollector().reset()
+
+        # 2. Configuração via .env
+        ams_host = os.getenv("SMA_AMS_HOST", "localhost")
+        ams_port = int(os.getenv("SMA_AMS_PORT", 8000))
+        agent_host = os.getenv("SMA_AGENT_HOST", "localhost")
+        base_port = int(os.getenv("SMA_AGENT_BASE_PORT", 5003))
+
+        display_message("MASStrategy", f"Iniciando MAS data-driven para PID: {self.pid}")
+        display_message(
+            "MASStrategy",
+            f"Configuração: AMS={ams_host}:{ams_port}, BasePort={base_port}, "
+            f"animais={len(animal_tags)}, fps={self.fps}, mode={self.mode}",
+        )
+
+        # 3. AMS Agent (standalone)
+        ams_agent = AMS(host=ams_host, port=ams_port)
+        ams_agent.register_user("admin", "admin@pade.com", "admin")
+        ams_agent._initialize_database()
+
+        # 4. Port layout
+        # base_port+0: DatasetCaptureAgent
+        # base_port+1: DataEnhanceAgent
+        # base_port+2: FrameSelectionAgent
+        # base_port+3: PredictWeightAgent
+        # base_port+6: ResourceManagerAgent
+
+        def aid(name, offset):
+            port = base_port + offset
+            return AID(name=f"{name}@{agent_host}:{port}")
+
+        capture_aid = aid("capture_agent", 0)
+        enhance_aid = aid("data_enhance_agent", 1)
+        selection_aid = aid("frame_selection_agent", 2)
+        predict_aid = aid("predict_weight_agent", 3)
+        rm_aid = aid("resource_manager_agent", 6)
+
+        weight_model_path = "infra/models/sheep_weight_predictor.tflite"
+        selection_model_path = "infra/models/frame_selector.tflite"
+
+        # 5. Adapters (lógica de domínio compartilhada, paridade com baseline)
+        enhance_adapter = DataEnhanceAdapter()
+        # suitable_window é vestigial (não usado em FrameSelection.evaluate).
+        selection_adapter = FrameSelectionAdapter(
+            suitable_window=None,
+            model_path=selection_model_path,
+        )
+        inference_adapter = InferenceAdapter(weight_model_path)
+
+        # 6. Agents
+        # PredictWeightAgent é criado ANTES do DatasetCaptureAgent porque o
+        # capture notifica o predict IN-PROCESS (termination capture-driven).
+        predict_agent = PredictWeightAgent(
+            aid=predict_aid,
+            inference_adapter=inference_adapter,
+            mode=self.mode,
+            pid=self.pid,
+            herd_size=len(animal_tags),
+            capture_agent_aid=capture_aid.name,
+            verbose=self.verbose,
+            fps=self.fps,
+        )
+
+        capture_agent = DatasetCaptureAgent(
+            aid=capture_aid,
+            dataset=dataset,
+            next_agent_aid=selection_aid.name,
+            selection_agent_aid=selection_aid.name,
+            animal_tags=animal_tags,
+            fps=self.fps,
+            max_passage_seconds=self.max_passage_seconds,
+            wait_for_aids=[selection_aid.name, predict_aid.name],
+            predict_agent=predict_agent,
+            verbose=self.verbose,
+        )
+
+        enhance_agent = DataEnhanceAgent(
+            aid=enhance_aid,
+            data_enhance_adapter=enhance_adapter,
+            next_agent_aid=predict_aid.name,
+        )
+
+        selection_agent = FrameSelectionAgent(
+            aid=selection_aid,
+            frame_selection_adapter=selection_adapter,
+            next_agent_aid=enhance_aid.name,
+            predict_agent_aid=predict_aid.name,
+            capture_agent_aid=capture_aid.name,
+            verbose=self.verbose,
+        )
+
+        resource_agent = ResourceManagerAgent(
+            aid=rm_aid,
+            pid=self.pid,
+            reports_dir="infra/reports",
+            debug=False,
+        )
+        resource_agent.ams = {"name": ams_host, "port": ams_port}
+
+        # 7. Hook de shutdown limpo para o monitor de recursos
+        reactor.addSystemEventTrigger(
+            'before', 'shutdown', resource_agent.stop_monitoring
+        )
+
+        # 8. Conecta todos os agentes ao AMS e ao reator
+        all_agents = [
+            resource_agent, capture_agent, enhance_agent,
+            selection_agent, predict_agent,
+        ]
+
+        for agent in all_agents:
+            agent.update_ams(resource_agent.ams)
+            agent.on_start()
+            reactor.listenTCP(agent.aid.port, agent.agentInstance)
+
+        display_message("MASStrategy", "Todos os agentes iniciados. Reator Twisted rodando.")
+        # Thread pool enxuto (Pi 5: 4 cores) — evita context switching excessivo
+        # com deferToThread concorrentes.
+        reactor.getThreadPool().adjustPoolsize(minthreads=2, maxthreads=4)
+        reactor.run()
