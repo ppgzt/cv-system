@@ -57,7 +57,9 @@ class ReportCollector:
             
             # Load real weights from data/exp1/animal-tags/<tag>/weight.json
             real_weights = {}
-            tags_dir = '/Users/gabriellopesbastos/Projects/PIBIC/cv-system/data/exp1/animal-tags'
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+            tags_dir = os.path.join(project_root, 'data', 'exp1', 'animal-tags')
             for tag in self.selection_data.keys():
                 w_path = os.path.join(tags_dir, tag, 'weight.json')
                 if os.path.exists(w_path):
