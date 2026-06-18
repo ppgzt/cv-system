@@ -173,3 +173,5 @@ mas/pade/web/data.sqlite
 /logs
 /data/*
 
+# Include debug files from reports
+!infra/reports/*/debug.jog
