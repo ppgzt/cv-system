@@ -43,6 +43,9 @@ class FrameSelectionAgent(Agent):
         self.forwarded = 0
         self._lock = threading.Lock()
         
+        from twisted.internet.defer import DeferredSemaphore
+        self.semaphore = DeferredSemaphore(1)
+        
         self.expected_frames = {}
         self.processed_frames = {}
         self.suitable_frames = {}
@@ -139,7 +142,7 @@ class FrameSelectionAgent(Agent):
             self._on_selection_complete(False, payload)
             return
             
-        d = deferToThread(self.frame_selection_adapter.evaluate, elapsed, img)
+        d = self.semaphore.run(deferToThread, self.frame_selection_adapter.evaluate, elapsed, img)
         d.addCallback(self._on_selection_complete, payload)
         d.addErrback(self._on_selection_error)
 

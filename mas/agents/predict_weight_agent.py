@@ -50,6 +50,9 @@ class PredictWeightAgent(Agent):
         self._total_inferences = 0
         self._lock = threading.Lock()
         
+        from twisted.internet.defer import DeferredSemaphore
+        self.semaphore = DeferredSemaphore(1)
+        
         self.batch_imgs = {}
         self.batch_payloads = {}
         self.expected_counts = {}
@@ -168,7 +171,7 @@ class PredictWeightAgent(Agent):
             }
 
         start_ts = datetime.now().isoformat()
-        d = deferToThread(self.inference_adapter.predict, [img])
+        d = self.semaphore.run(deferToThread, self.inference_adapter.predict, [img])
         d.addCallback(self._on_single_inference_success, payload, start_ts)
         d.addErrback(self._on_inference_error)
         
@@ -187,7 +190,7 @@ class PredictWeightAgent(Agent):
 
         display_message(self.aid.name, f"[BATCH INFERENCE] Running full network on {len(imgs)} frames for animal {animal_id}")
         start_ts = datetime.now().isoformat()
-        d = deferToThread(self.inference_adapter.predict, imgs)
+        d = self.semaphore.run(deferToThread, self.inference_adapter.predict, imgs)
         d.addCallback(self._on_batch_inference_success, animal_id, total_frames, start_ts)
         d.addErrback(self._on_inference_error)
 

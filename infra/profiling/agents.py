@@ -48,15 +48,15 @@ class RAMMonitor(threading.Thread):
             
             line = [
                 datetime.now().isoformat(),
-                mem.total,
-                mem.available,
-                mem.used,
-                mem.percent,
-                mem.free,
-                mem.active,
-                mem.inactive,
-                mem.buffers,
-                mem.cached
+                getattr(mem, 'total', 0),
+                getattr(mem, 'available', 0),
+                getattr(mem, 'used', 0),
+                getattr(mem, 'percent', 0),
+                getattr(mem, 'free', 0),
+                getattr(mem, 'active', 0),
+                getattr(mem, 'inactive', 0),
+                getattr(mem, 'buffers', 0),
+                getattr(mem, 'cached', 0)
             ]
             
             self.data.append(line)

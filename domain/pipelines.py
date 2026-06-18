@@ -38,9 +38,13 @@ class SingleStreamStrategy:
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
+        import tensorflow as tf
+        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite")
+        self.selection_model.allocate_tensors()
+
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
-            model=self.model
+            model=self.selection_model
         )
 
         self.image_capture = ImageCapture()
@@ -129,9 +133,13 @@ class BatchStreamStrategy:
         self.model = keras.models.load_model(f'infra/models/model_run1_epoch029.keras')
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
+        import tensorflow as tf
+        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite")
+        self.selection_model.allocate_tensors()
+
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
-            model=self.model
+            model=self.selection_model
         )
 
         self.image_capture = ImageCapture()
@@ -277,13 +285,14 @@ class MASStrategy:
         rm_aid            = aid("resource_manager_agent", 6)
 
         model_path = "infra/models/model_run1_epoch029.keras"
+        selection_model_path = "infra/models/frame_selector.tflite"
 
         # 4. Adapters (shared domain logic, parity with baseline)
         capture_adapter    = CaptureAdapter()
         enhance_adapter    = DataEnhanceAdapter()
         selection_adapter  = FrameSelectionAdapter(
             suitable_window=self.fselection_window,
-            model_path=model_path,
+            model_path=selection_model_path,
         )
 
         # We pass the path to allow lazy/async loading in the agent

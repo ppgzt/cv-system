@@ -15,9 +15,10 @@ class FrameSelectionAdapter:
         self._selection = None
 
     def load_model(self):
-        import keras
-        model = keras.models.load_model(self.model_path)
-        self._selection = FrameSelection(self.suitable_window, model)
+        import tensorflow as tf
+        interpreter = tf.lite.Interpreter(model_path=self.model_path)
+        interpreter.allocate_tensors()
+        self._selection = FrameSelection(self.suitable_window, interpreter)
 
     def evaluate(self, elapsed_time: float, img) -> bool:
         if not self._selection:
