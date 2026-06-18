@@ -173,12 +173,12 @@ class PredictWeightAgent(Agent):
     def notify_capture_done(self, animal_id, total_frames=None,
                             first_capture=None, last_capture=None):
         """Chamada IN-PROCESS pelo DatasetCaptureAgent quando a captura do
-        animal acaba (último frame capturado). É o gatilho deterministicamente
-        confiável para o cálculo do peso final — não depende do canal FIPA
-        (que é fire-and-forget e perde mensações sob carga).
-
-        Single: tenta finalizar assim que as inferências em voo drenarem.
-        Batch : dispara o batch sobre os frames suitable acumulados.
+        animal acaba (último frame capturado). Apenas salva as métricas de 
+        captura no relatório.
+        
+        A finalização real e confiável aguarda o sync de frames (batch-ready) 
+        vindo do FrameSelectionAgent, garantindo que todas as threads 
+        anteriores drenaram o processamento.
         """
         self._capture_done.add(animal_id)
 
@@ -197,13 +197,8 @@ class PredictWeightAgent(Agent):
         display_message(
             self.aid.name,
             f"[CAPTURE-DONE] Animal {animal_id}: captura concluída "
-            f"(total={total_frames}). Modo={self.mode}.",
+            f"(total={total_frames}). Aguardando o término do pipeline...",
         )
-
-        if self.mode == "batch":
-            self._process_batch(animal_id)
-        else:
-            self._maybe_finalize(animal_id)
 
     def _maybe_finalize(self, animal_id):
         """Finaliza o animal se: captura concluída E nenhuma inferência em voo."""
