@@ -6,4 +6,4 @@ class PredictWeight:
         self.model = model
 
     def predict(self, imgs: list):
-        return self.model(np.array(imgs), training=False).numpy()
+        return self.model.predict(np.array(imgs), batch_size=4, verbose=0)
