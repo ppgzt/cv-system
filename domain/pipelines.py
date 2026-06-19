@@ -6,6 +6,10 @@ from datetime import datetime
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = '0'
 os.environ["KERAS_BACKEND"] = "tensorflow"
 
+import tensorflow as tf
+tf.config.threading.set_intra_op_parallelism_threads(2)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 def dummy_npwarn_decorator_factory():
   def npwarn_decorator(x):
     return x
@@ -39,11 +43,12 @@ class SingleStreamStrategy:
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         import tensorflow as tf
-        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite")
+        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite", num_threads=1)
         self.selection_model.allocate_tensors()
 
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
+            passage_time=self.passage_time,
             model=self.selection_model
         )
 
@@ -134,11 +139,12 @@ class BatchStreamStrategy:
         self.metrics['load_model_final'] = datetime.now().isoformat()
 
         import tensorflow as tf
-        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite")
+        self.selection_model = tf.lite.Interpreter(model_path="infra/models/frame_selector.tflite", num_threads=1)
         self.selection_model.allocate_tensors()
 
         self.frame_selection = FrameSelection(
             suitable_window=fselection_window, 
+            passage_time=self.passage_time,
             model=self.selection_model
         )
 
@@ -292,6 +298,7 @@ class MASStrategy:
         enhance_adapter    = DataEnhanceAdapter()
         selection_adapter  = FrameSelectionAdapter(
             suitable_window=self.fselection_window,
+            passage_time=self.passage_time,
             model_path=selection_model_path,
         )
 

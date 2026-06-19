@@ -1,5 +1,6 @@
 # App
 *.keras
+*.tflite
 .python-version
 
 # Byte-compiled / optimized / DLL files

@@ -10,8 +10,9 @@ class FrameSelection:
     - suitable_window: the window of seconds that should be considered suitable
     - model: the tflite Interpreter
     '''
-    def __init__(self, suitable_window: float,  model: object):
+    def __init__(self, suitable_window: float, passage_time: float, model: object):
         self.suitable_window = suitable_window
+        self.passage_time = passage_time
         self.interpreter = model
         if self.interpreter:
             self.input_details = self.interpreter.get_input_details()
@@ -21,7 +22,12 @@ class FrameSelection:
     def evaluate(self, elapsed_time: float, img):
         suite = False
 
-        if elapsed_time <= self.suitable_window:
+        half_passage = self.passage_time / 2.0
+        half_window = self.suitable_window / 2.0
+        start_window = half_passage - half_window
+        end_window = half_passage + half_window
+
+        if start_window <= elapsed_time <= end_window:
             suite = True
         
         if self.interpreter:
