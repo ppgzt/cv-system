@@ -28,7 +28,7 @@ fi
 EXTRA_ARGS=("$@")
 
 # Lista de FPS para os experimentos reais
-FPS_LIST=(1 2 3 4 5 10 15 20 30)
+FPS_LIST=(3 4 5 10 15 20 30)
 
 # Interpretador Python (execução normal, sem venv)
 PYTHON_EXEC="python"
@@ -58,41 +58,41 @@ echo "=========================================================="
 echo
 
 # ------------------------------------------------------------------------------
-# 1. EXPERIMENTO DE WARM-UP (5 FPS)
+# 1. EXPERIMENTO DE WARM-UP (5 FPS) - PULADO (SISTEMA JÁ AQUECIDO)
 # ------------------------------------------------------------------------------
-echo "----------------------------------------------------------"
-echo "[WARM-UP] Rodando experimento inicial de 5 FPS (Warm-up)..."
-echo "----------------------------------------------------------"
-echo "Comando: $PYTHON_EXEC mas-main.py \"$MODE\" 5 ${EXTRA_ARGS[*]}"
-echo
-
-$PYTHON_EXEC mas-main.py "$MODE" 5 "${EXTRA_ARGS[@]}"
-WARMUP_STATUS=$?
-
-# Localizar e deletar a pasta gerada pelo warm-up
-NEW_DIR=$(ls -td infra/reports/"${MODE}"_* 2>/dev/null | head -n 1)
-
-if [ -n "$NEW_DIR" ] && [ -d "$NEW_DIR" ]; then
-    echo
-    echo "[WARM-UP] Descartando pasta gerada pelo warm-up: $NEW_DIR"
-    rm -rf "$NEW_DIR"
-    echo "[WARM-UP] Arquivos descartados com sucesso."
-else
-    echo
-    echo "[WARM-UP] AVISO: Não foi possível localizar a pasta de relatórios do warm-up."
-fi
-
-if [ $WARMUP_STATUS -ne 0 ]; then
-    echo "[WARM-UP] AVISO: O comando de warm-up terminou com código de saída $WARMUP_STATUS."
-fi
-
-echo "[WARM-UP] Warm-up concluído."
-echo
-
-# Intervalo após o warm-up
-echo "Aguardando $INTERVAL_MINUTES minutos de intervalo após o warm-up..."
-countdown $INTERVAL_SECONDS
-echo
+# echo "----------------------------------------------------------"
+# echo "[WARM-UP] Rodando experimento inicial de 5 FPS (Warm-up)..."
+# echo "----------------------------------------------------------"
+# echo "Comando: $PYTHON_EXEC mas-main.py \"$MODE\" 5 ${EXTRA_ARGS[*]}"
+# echo
+# 
+# $PYTHON_EXEC mas-main.py "$MODE" 5 "${EXTRA_ARGS[@]}"
+# WARMUP_STATUS=$?
+# 
+# # Localizar e deletar a pasta gerada pelo warm-up
+# NEW_DIR=$(ls -td infra/reports/"${MODE}"_* 2>/dev/null | head -n 1)
+# 
+# if [ -n "$NEW_DIR" ] && [ -d "$NEW_DIR" ]; then
+#     echo
+#     echo "[WARM-UP] Descartando pasta gerada pelo warm-up: $NEW_DIR"
+#     rm -rf "$NEW_DIR"
+#     echo "[WARM-UP] Arquivos descartados com sucesso."
+# else
+#     echo
+#     echo "[WARM-UP] AVISO: Não foi possível localizar a pasta de relatórios do warm-up."
+# fi
+# 
+# if [ $WARMUP_STATUS -ne 0 ]; then
+#     echo "[WARM-UP] AVISO: O comando de warm-up terminou com código de saída $WARMUP_STATUS."
+# fi
+# 
+# echo "[WARM-UP] Warm-up concluído."
+# echo
+# 
+# # Intervalo após o warm-up
+# echo "Aguardando $INTERVAL_MINUTES minutos de intervalo após o warm-up..."
+# countdown $INTERVAL_SECONDS
+# echo
 
 # ------------------------------------------------------------------------------
 # 2. LOOP DE EXPERIMENTOS PRINCIPAIS
