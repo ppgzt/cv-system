@@ -30,14 +30,8 @@ EXTRA_ARGS=("$@")
 # Lista de FPS para os experimentos reais
 FPS_LIST=(1 2 3 4 5 10 15 20 30)
 
-# Detectar interpretador Python no venv
-if [ -d ".venv" ]; then
-    PYTHON_EXEC=".venv/bin/python"
-    echo "--> Interpretador do venv detectado: $PYTHON_EXEC"
-else
-    PYTHON_EXEC="python"
-    echo "--> Venv não detectado. Usando interpretador padrão: $PYTHON_EXEC"
-fi
+# Interpretador Python (execução normal, sem venv)
+PYTHON_EXEC="python"
 
 # Função para contagem regressiva com atualização inline
 countdown() {
