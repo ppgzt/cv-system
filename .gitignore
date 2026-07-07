@@ -173,6 +173,9 @@ mas/pade/web/data.sqlite
 # Dados 
 /logs
 /data/*
+/data-analysis/*.pdf
+/data-analysis/notebook_summary.txt
+/data-analysis/tabela_resultados_tcc1.csv
 
 # Include debug files from reports
 !infra/reports/*/debug.jog
