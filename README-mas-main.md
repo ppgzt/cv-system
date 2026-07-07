@@ -69,7 +69,7 @@ O `DatasetCaptureAgent` simula uma câmera real definida por **FPS**:
 
 > Por que wall-clock e não "o mais rápido possível": preserva o ritmo real de
 > uma câmera, mantendo válidas as medições de throughput/latência e o teto de
-> capacidade (stall λ>μ) do MAS.
+> capacidade (stall λ>μ) do MAS. Veja [§10. Capacidade](#10-capacidade).
 
 Os **metadados** entre agentes (payload `frame-capture`) passam a carregar:
 `frame_id`, `animal_id` = **tag**, `frame_index`, `elapsed_time` (relógio
@@ -206,9 +206,22 @@ data/exp1/
   `max_passage_seconds` para capar.
 - **`num_animals`**: para iteração rápida, processe poucos animais
   (ex. `... 5 3`). Default = todas as tags (atualmente 193).
-- **Threads/cores**: `TF_INTRA/INTER_OP_PARALLELISM_THREADS=1` e o pool do
-  Twisted em `minthreads=2, maxthreads=4` (ajustado para o Pi 5, 4 cores). Os
-  modelos TFLite rodam com `num_threads=2` (XNNPACK CPU).
+- **Threads/cores**: `TF_INTRA_OP`/`TF_INTER_OP_PARALLELISM_THREADS=1` (em
+  `mas-main.py`) e o pool do Twisted em `minthreads=2, maxthreads=4`
+  (`mas_pipeline.py`, ajustado para o Pi 5, 4 cores). Os modelos TFLite rodam
+  com `num_threads=2` (XNNPACK CPU).
+- **Concorrência de inferência serializada**: seletor e regressor de peso são
+  despachados via `deferToThread`, mas guardados por um **`DeferredSemaphore(1)`**
+  compartilhado (1 inferência por vez) — em `PredictWeightAgent` e
+  `FrameSelectionAgent`. Isso impede que vários animais prontos disparem
+  inferências TF/TFLite concorrentes que se atropelariam nos 4 cores
+  (*thrashing*, que era o que travava o pipeline antigo sem semáforo em
+  ≥2 fps). Veja a [§10. Capacidade e concorrência](#10-capacidade).
+- **Capacidade (teto de FPS)**: o limite operacional depende do hardware e do
+  modelo — os números antigos (1.5/2 fps) medidos no pipeline **pré-semáforo**
+  (Keras, threadpool=30) **estão obsoletos** e devem ser re-medidos no código
+  atual (semáforo + TFLite). Veja [§10](#10-capacidade) e o documento de
+  análise em `logs/docs/analise-fps-capacidade.md`.
 - **dtype depth**: uint16 mm — não reescalar. O loader (`AnimalDataset`) usa
   `skimage.io.imread` preservando o tipo.
 - **Hardware**: CPU only (M1 para teste, RPi 5 para deploy) — sem GPU.
@@ -229,3 +242,59 @@ data/exp1/
 Os agentes `FrameSelectionAgent`, `DataEnhanceAgent` e `PredictWeightAgent`
 são **compartilhados**; apenas `DatasetCaptureAgent` é novo e o critério de
 término foi tornado compatível com ambos (int e tag-string).
+
+---
+
+<a id="10-capacidade"></a>
+## 10. Capacidade, concorrência e limites de FPS
+
+> Análise completa em `logs/docs/analise-fps-capacidade.md`. Esta seção resume
+> o que é **fato no código atual** (verificável) e o que ainda **precisa ser
+> re-medido**.
+
+### Por que existe um teto de FPS (e ele não é da câmera)
+
+Aumentar o FPS **não** aumenta o número de animais processados por minuto. A
+chegada de animais (λ) é ditada pelo ritmo da passagem (cada animal tem um
+`tmax` no dado), e o serviço por animal (μ) cresce com o FPS — mais frames
+capturados → mais `enhance`/`select`/`predict` por animal. A partir de certo
+FPS, **λ > μ** e o backlog cresce sem parar (stall), o que leva o watchdog a
+forçar a finalização dos animais restantes como *placeholders* (sem predição
+real). É por isso que a captura é **wall-clock paced** (não "o mais rápido
+possível"): preserva o ritmo real e mantém a medição de throughput válida.
+
+### Como o código atual controla a concorrência (evita o thrashing)
+
+Versões antigas do MAS disparavam uma inferência `deferToThread` por animal
+**sem limite de concorrência** — quando vários animais ficavam prontos juntos
+(em ≥2 fps), dezenas de threads TF/TFLite competiam nos 4 cores, e a inferência
+degradava de ~2s para até ~50s (*thrashing*). O código atual corrige isso com:
+
+- **`DeferredSemaphore(1)`** em `PredictWeightAgent` (linhas 296/325) e
+  `FrameSelectionAgent` (linha 193): **no máximo uma inferência de cada tipo por
+  vez**, independentemente de quantos animais estejam prontos.
+- **TFLite/XNNPACK** com `num_threads=2` (em vez de Keras multi-thread).
+- **`TF_INTRA/INTER_OP_PARALLELISM_THREADS=1`** e pool do Twisted em
+  `minthreads=2, maxthreads=4`.
+
+Com isso, a inferência sob carga degrada de forma controlada (próximo do
+linear), não catastrófica.
+
+### ⚠️ Números de capacidade obsoletos — re-medir
+
+Os runs em `logs/mas-batch-1_5fps-100a/` (100/100) e
+`logs/mas-batch-2fps-100a/` (58/100 reais + 42 *placeholders*) são do pipeline
+**pré-semáforo, em Keras, threadpool=30**. Eles **não** representam o
+comportamento do `mas-main.py` atual. Antes de concluir qualquer teto de FPS
+para o deploy no Pi 5, **re-meça** com o código atual (semáforo + TFLite),
+provavelmente o 2 fps passa a ser viável onde antes colapsava.
+
+### Critério para novas medições
+
+- Varre FPS ∈ {1, 1.5, 2, 3, …} e confere se todos os animais finalizam com
+  predição **real** (sem *placeholders* do watchdog).
+- Monitore `mem.csv`/`cpu.csv` e o `queue_depth` (se disponível): o sistema
+  está em λ ≤ μ enquanto o backlog drena no fim; está em λ > μ quando o
+  `frame_buffer` cresce monotonicamente e o watchdog dispara.
+- Reporte o FPS máximo em que **100% dos animais** têm peso real como o teto
+  operacional daquela configuração (hardware + modelo + semáforo).

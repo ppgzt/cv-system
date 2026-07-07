@@ -2,6 +2,7 @@
 
 Uso:
     python mas-main.py <mode> <fps> [num_animals] [max_passage_seconds] [--debug]
+                        [--engine {thread,pade}]
 
     mode                 : 'mas-single' | 'mas-batch'
     fps                  : taxa de captura simulada (frames por segundo)
@@ -10,15 +11,17 @@ Uso:
     --debug              : modo verbose — log por frame (label real x classificacao
                            do seletor x peso) e salva TODO o log em
                            infra/reports/<pid>/debug.log
+    --engine             : 'thread' (padrão, pipeline de threads) | 'pade' (PADE/FIPA)
 
 Exemplos:
-    python mas-main.py mas-single 5 3              # 3 animais a 5 fps
+    python mas-main.py mas-single 5 3              # 3 animais a 5 fps (threads)
     python mas-main.py mas-batch 10                # todos os animais a 10 fps
     python mas-main.py mas-single 5 3 --debug      # 3 animais, log detalhado
+    python mas-main.py mas-single 5 3 --engine pade # mesmo pipeline via PADE/FIPA
     python mas-main.py mas-single 5 192 30 --debug # todos, cap 30s/animal, log detalhado
 
-O monitoramento de CPU/RAM é feito pelo ResourceManagerAgent (escreve
-mem.csv/cpu.csv em infra/reports/<pid>/), igual ao fluxo MAS antigo.
+O monitoramento de CPU/RAM/Temp escreve cpu.csv/mem.csv/temp.csv em
+infra/reports/<pid>/ em ambos os engines (mesma psutil, mesma cadência).
 """
 
 import sys
@@ -47,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="cap do span de cada animal em segundos (default: sem cap)")
     p.add_argument("--debug", action="store_true",
                    help="modo verbose + salva todo o log em debug.log")
+    p.add_argument("--engine", choices=["thread", "pade"], default="thread",
+                   help="engine de orquestração: 'thread' (padrão) ou 'pade'")
     return p
 
 
@@ -61,7 +66,8 @@ def main():
         print(f"[ERROR] mode deve ser mas-single ou mas-batch (recebido: {args.mode})")
         sys.exit(1)
 
-    pid = f"{args.mode}_{datetime.now().isoformat()}"
+    # pid inclui o engine p/ não colidir relatórios entre thread/pade
+    pid = f"{args.mode}_{args.engine}_{datetime.now().isoformat()}"
     reports_dir = f"infra/reports/{pid}"
     os.makedirs(reports_dir, exist_ok=True)
 
@@ -72,17 +78,28 @@ def main():
         log_file = enable_debug_log(f"{reports_dir}/debug.log")
         print(f"[DEBUG] log verbose sendo gravado em {reports_dir}/debug.log")
         print(f"[DEBUG] mode={mode} fps={args.fps} num_animals={args.num_animals} "
-              f"max_passage_seconds={args.max_passage_seconds}")
+              f"max_passage_seconds={args.max_passage_seconds} engine={args.engine}")
 
     try:
-        strategy = MASStrategy(
-            pid=pid,
-            mode=mode,
-            fps=args.fps,
-            num_animals=args.num_animals,
-            max_passage_seconds=args.max_passage_seconds,
-            verbose=args.debug,
-        )
+        if args.engine == "pade":
+            strategy = MASStrategy(
+                pid=pid,
+                mode=mode,
+                fps=args.fps,
+                num_animals=args.num_animals,
+                max_passage_seconds=args.max_passage_seconds,
+                verbose=args.debug,
+            )
+        else:
+            from thread_pipeline import ThreadPipeline
+            strategy = ThreadPipeline(
+                pid=pid,
+                mode=mode,
+                fps=args.fps,
+                num_animals=args.num_animals,
+                max_passage_seconds=args.max_passage_seconds,
+                verbose=args.debug,
+            )
         strategy.run()
     finally:
         if log_file is not None:
