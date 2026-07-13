@@ -1,0 +1,6 @@
+iteration,image_id,animal_id,true_class,predicted_class,predicted_argmax,score,total_stage_ns,total_stage_ms,tflite_total_ns,tflite_total_ms,invoke_ns,invoke_ms,input_shape,input_dtype,timestamp_monotonic_ns,timestamp_utc
+1,img_75c4ee11,0511,suited,suited,0,0.9999234676361084,9499875,9.499875,8452750,8.45275,8417083,8.417083,"(1, 224, 224, 3)",<class 'numpy.float32'>,,
+2,img_2de6b07f,0074,suited,suited,0,0.999997615814209,9218542,9.218542,8233625,8.233625,8204125,8.204125,"(1, 224, 224, 3)",<class 'numpy.float32'>,,
+3,img_1892d8f6,0048az,suited,suited,0,0.9998451471328735,9187833,9.187833,8234167,8.234167,8205708,8.205708,"(1, 224, 224, 3)",<class 'numpy.float32'>,,
+4,img_c181432a,0606az,suited,suited,0,0.9999611377716064,9122959,9.122959,8232000,8.232,8202875,8.202875,"(1, 224, 224, 3)",<class 'numpy.float32'>,,
+5,img_1aec88fc,0009ro,not_suited,not_suited,1,0.0020406111143529415,9886791,9.886791,8928708,8.928708,8897125,8.897125,"(1, 224, 224, 3)",<class 'numpy.float32'>,,

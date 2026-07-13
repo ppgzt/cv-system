@@ -71,9 +71,32 @@ O `DatasetCaptureAgent` simula uma câmera real definida por **FPS**:
 > uma câmera, mantendo válidas as medições de throughput/latência e o teto de
 > capacidade (stall λ>μ) do MAS. Veja [§10. Capacidade](#10-capacidade).
 
+### 2.1. Reprodução pelos timestamps originais (engine `thread`)
+
+Para reproduzir cada passagem usando todos os frames e os intervalos originais
+de `relative_time_ms`, sem nearest-neighbor, use:
+
+```bash
+python mas-main.py mas-single --native-timestamps
+python mas-main.py mas-single --native-timestamps --num-animals 3
+```
+
+Esse modo está disponível somente no engine padrão `thread`. O `fps` pode ser
+omitido; se for informado por compatibilidade, não participa do agendamento.
+Cada frame do `simulation_index.json` é emitido uma única vez, usando deadlines
+baseados em relógio monotônico. O pipeline mantém as mesmas quatro threads e as
+mesmas filas do modo FPS; nenhum worker adicional é criado. O modo original
+continua sendo ativado pelos comandos existentes, por exemplo:
+
+```bash
+python mas-main.py mas-single 5 3
+```
+
 Os **metadados** entre agentes (payload `frame-capture`) passam a carregar:
 `frame_id`, `animal_id` = **tag**, `frame_index`, `elapsed_time` (relógio
-virtual ms), `label` (ground-truth) e `depth_filename`.
+virtual ms ou timestamp original), `label` (ground-truth) e `depth_filename`.
+No modo nativo, `dataset_timestamp_ms` também registra explicitamente o
+`relative_time_ms` usado no agendamento.
 
 ### Single vs Batch
 - **`mas-single`**: cada frame *suitable* é inferido **imediatamente**

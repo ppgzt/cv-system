@@ -1,0 +1,10 @@
+\begin{tabular}{lrrrrrrrrrrrrr}
+\toprule
+Stage & Format & Size MB & Threads & N & Mean ms & SD & Median ms & P95 & P99 & Min & Max & CV & Thruput \\
+\midrule
+Frame selection & TFLite (MobileNetV2) & 9.523 & 2 & 30 & 10.6 & 3.426 & 9.646 & 13.17 & 23.57 & 9.122 & 27.77 & 0.3231 & 103.7 \\
+Data enhancement & NumPy + TF (CPU) &  &  & 30 & 3.274 & 2.632 & 2.742 & 3.66 & 13.21 & 2.353 & 17.09 & 0.8038 & 364.7 \\
+Weight estimation & TFLite (EfficientNet-B3) & 51.99 & 2 & 30 & 106.8 & 27.93 & 94.9 & 166.4 & 194.2 & 82.03 & 199.4 & 0.2615 & 10.54 \\
+Final aggregation & NumPy (CPU) &  &  & 150 & 0.006113 & 0.001383 & 0.005708 & 0.007046 & 0.01382 & 0.005292 & 0.01608 & 0.2263 & 1.752e+05 \\
+\bottomrule
+\end{tabular}

@@ -1,0 +1,12 @@
+timestamp_utc,timestamp_monotonic_ns,component,cpu_total_percent,process_cpu_percent,process_rss_bytes,mem_available_bytes,temperature_celsius,cpu_freq_cur_hz,cpu_freq_min_hz,cpu_freq_max_hz,cpu_governor,throttled_raw,throttled_now,undervoltage_now,freq_capped_now
+2026-07-13T15:29:46,120458631055250,selector__setup,0.0,,,1300971520,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:46,120458952553625,selector__setup,28.8,,,1292500992,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:46,120459011017250,enhancer__setup,53.7,,,1280966656,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:46,120459125385958,enhancer__setup,46.4,,,1280966656,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:47,120460078213416,predictor__setup,0.0,,,1253261312,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:48,120461101248958,predictor__setup,79.0,,,1290551296,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:49,120462120919791,predictor__setup,74.9,,,1295564800,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:50,120463142894791,predictor__setup,56.9,,,1290305536,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:50,120463285983666,predictor__setup,69.0,,,1289715712,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:50,120463309599250,aggregation__setup,46.2,,,1288798208,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available
+2026-07-13T15:29:50,120463311283291,aggregation__setup,55.0,,,1288798208,,not_available,not_available,not_available,not_available,not_available,not_available,not_available,not_available

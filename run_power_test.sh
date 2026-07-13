@@ -20,6 +20,7 @@
 #   ./run_power_test.sh                     # defaults: mas-single, 5 fps, rebanho completo
 #   FPS=10 NUM_ANIMALS=5 ./run_power_test.sh
 #   MODE=mas-batch FPS=2 RUN_TAG=r1 ./run_power_test.sh
+#   NATIVE_TIMESTAMPS=1 ./run_power_test.sh  # timestamps originais do dataset
 # ==============================================================================
 set -uo pipefail
 
@@ -41,6 +42,7 @@ MODE="${MODE:-mas-single}"           # mas-single | mas-batch (env-overridable p
 FPS="${FPS:-5}"
 NUM_ANIMALS="${NUM_ANIMALS:-}"         # vazio = TODOS os animais (rebanho completo)
 EXTRA_ARGS="${EXTRA_ARGS:---debug}"  # --debug grava debug.log no Pi; vazio p/ desligar
+NATIVE_TIMESTAMPS="${NATIVE_TIMESTAMPS:-0}"
 
 # --- Python no Mac (para o TC66C.py) ---
 # Precisa de pyserial + pycryptodome instalados neste interpretador.
@@ -50,6 +52,9 @@ PY="${PY:-.venv/bin/python}"
 RUN_TAG="${RUN_TAG:-$(date +%Y%m%d_%H%M%S)}"  # env-overridable: a bateria passa "r1","r2",...
 WORK_DIR="${WORK_DIR:-./power_runs}"
 OUT_DIR="${WORK_DIR}/${MODE}_${FPS}fps_${RUN_TAG}"
+if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
+    OUT_DIR="${WORK_DIR}/${MODE}_native_${RUN_TAG}"
+fi
 POWER_CSV="${OUT_DIR}/power.csv"
 TC66_LOG="${OUT_DIR}/tc66.log"
 SSH_LOG="${OUT_DIR}/pipeline.log"
@@ -58,7 +63,11 @@ SSH_LOG="${OUT_DIR}/pipeline.log"
 ts() { date "+%Y-%m-%dT%H:%M:%S%z"; }
 
 echo "=========================================================="
-echo "  POWER TEST — ${MODE} @ ${FPS} fps, ${NUM_ANIMALS:-todos} animais"
+if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
+    echo "  POWER TEST — ${MODE} @ native timestamps, ${NUM_ANIMALS:-todos} animais"
+else
+    echo "  POWER TEST — ${MODE} @ ${FPS} fps, ${NUM_ANIMALS:-todos} animais"
+fi
 echo "  Voltímetro : ${PORT}   (este Mac)"
 echo "  Pipeline   : ${PI_HOST}:${PI_DIR}  (Raspberry, via SSH)"
 echo "  Saída      : ${OUT_DIR}"
@@ -105,8 +114,13 @@ fi
 
 # --- 3. Roda o pipeline no Raspberry (SSH bloqueia até terminar) ---
 echo "[2/5] Disparando pipeline no Raspberry via SSH..."
-CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' '${FPS}'"
-[ -n "$NUM_ANIMALS" ] && CMD+=" '${NUM_ANIMALS}'"
+if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
+    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' --native-timestamps"
+    [ -n "$NUM_ANIMALS" ] && CMD+=" --num-animals '${NUM_ANIMALS}'"
+else
+    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' '${FPS}'"
+    [ -n "$NUM_ANIMALS" ] && CMD+=" '${NUM_ANIMALS}'"
+fi
 [ -n "$EXTRA_ARGS" ]  && CMD+=" ${EXTRA_ARGS}"
 echo "      ssh ${PI_HOST} \"${CMD}\""
 echo "[T0] início do pipeline: $(ts)" | tee -a "$SSH_LOG"

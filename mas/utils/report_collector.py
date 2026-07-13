@@ -50,7 +50,7 @@ class ReportCollector:
         with self._lock:
             self.final_predictions[animal_id] = final_weight
 
-    def generate_report(self, reports_dir, mode, fps):
+    def generate_report(self, reports_dir, mode, fps, capture_mode=None):
         with self._lock:
             report_path = os.path.join(reports_dir, "report.md")
             os.makedirs(reports_dir, exist_ok=True)
@@ -73,7 +73,13 @@ class ReportCollector:
             lines.append(f"# Relatório de Execução - {os.path.basename(reports_dir)}")
             lines.append("")
             lines.append(f"- **Modo de Inferencia:** {mode}")
-            lines.append(f"- **FPS Simulado:** {fps if fps is not None else 'N/A'}")
+            if capture_mode == "native-timestamps":
+                lines.append(
+                    "- **Fonte temporal:** timestamps originais de "
+                    "simulation_index.json"
+                )
+            else:
+                lines.append(f"- **FPS Simulado:** {fps if fps is not None else 'N/A'}")
             lines.append(f"- **Data/Hora de Geração:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             lines.append("")
             

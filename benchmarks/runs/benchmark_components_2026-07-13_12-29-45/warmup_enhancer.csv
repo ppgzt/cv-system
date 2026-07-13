@@ -1,0 +1,6 @@
+iteration,image_id,animal_id,total_stage_ns,total_stage_ms,input_shape,input_dtype,output_shape,output_dtype,output_min,output_max,output_mean,output_std,noise_removal_ns,noise_removal_ms,adjust_scale_ns,adjust_scale_ms,replicate_ns,replicate_ms,resize_pad_ns,resize_pad_ms,timestamp_monotonic_ns,timestamp_utc
+1,img_43196f04,0121vd,19665042,19.665042,"(240, 320)",uint16,"(300, 300, 3)",float32,0.0,1.0,0.4934259355068207,0.34336552023887634,,,,,,,,,,
+2,img_de669236,0002,3491167,3.491167,"(240, 320)",uint16,"(300, 300, 3)",float32,0.0,1.0,0.5929815769195557,0.36352232098579407,,,,,,,,,,
+3,img_25d5977e,0219,2910500,2.9105,"(240, 320)",uint16,"(300, 300, 3)",float32,0.0,1.0,0.5102857351303101,0.31766247749328613,,,,,,,,,,
+4,img_c246ed56,0052az,2437291,2.437291,"(240, 320)",uint16,"(300, 300, 3)",float32,0.0,1.0,0.4730968773365021,0.3271172046661377,,,,,,,,,,
+5,img_0bf4988f,71azf,2395791,2.395791,"(240, 320)",uint16,"(300, 300, 3)",float32,0.0,1.0,0.48407021164894104,0.33378133177757263,,,,,,,,,,

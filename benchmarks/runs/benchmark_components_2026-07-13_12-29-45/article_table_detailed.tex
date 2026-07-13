@@ -1,0 +1,14 @@
+\begin{tabular}{lrrrrrrr}
+\toprule
+Component & Metric & Mean ms & SD ms & Median ms & P95 & P99 & N \\
+\midrule
+selector & total\_stage\_ns & 10.6 & 3.426 & 9.646 & 13.17 & 23.57 & 30 \\
+selector & tflite\_total\_ns & 9.168 & 1.679 & 8.489 & 11.94 & 15.09 & 30 \\
+selector & invoke\_ns & 9.128 & 1.656 & 8.459 & 11.9 & 14.95 & 30 \\
+enhancer & total\_stage\_ns & 3.274 & 2.632 & 2.742 & 3.66 & 13.21 & 30 \\
+predictor & total\_stage\_ns & 106.8 & 27.93 & 94.9 & 166.4 & 194.2 & 30 \\
+predictor & tflite\_total\_ns & 106.2 & 27.85 & 94.36 & 164.7 & 193.8 & 30 \\
+predictor & invoke\_ns & 106.1 & 27.86 & 94.32 & 164.6 & 193.7 & 30 \\
+aggregation & aggregation\_ns & 0.006113 & 0.001383 & 0.005708 & 0.007046 & 0.01382 & 150 \\
+\bottomrule
+\end{tabular}

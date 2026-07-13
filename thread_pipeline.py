@@ -49,11 +49,12 @@ class ThreadPipeline:
         self,
         pid: str,
         mode: str,
-        fps: float,
+        fps: float | None,
         num_animals: int | None = None,
         max_passage_seconds: float | None = None,
         data_root: str = "data/exp1",
         verbose: bool = False,
+        native_timestamps: bool = False,
     ):
         self.pid = pid
         self.mode = mode
@@ -61,7 +62,11 @@ class ThreadPipeline:
         self.num_animals = num_animals
         self.max_passage_seconds = max_passage_seconds
         self.data_root = data_root
+        self.native_timestamps = native_timestamps
         self.verbose = verbose
+
+        if not self.native_timestamps and (self.fps is None or self.fps <= 0):
+            raise ValueError("fps deve ser maior que zero no modo normal")
 
     # ------------------------------------------------------------------ #
     def _log(self, tag: str, msg: str):
@@ -85,6 +90,13 @@ class ThreadPipeline:
         return j
 
     def _capture_loop(self, dataset, animal_tags, q1):
+        # O caminho original permanece intacto. O modo nativo usa um produtor
+        # alternativo, mas mantém as mesmas quatro threads do pipeline e as
+        # mesmas filas/sentinelas downstream.
+        if self.native_timestamps:
+            self._capture_loop_native(dataset, animal_tags, q1)
+            return
+
         step_ms = 1000.0 / self.fps
         period = 1.0 / self.fps
 
@@ -153,6 +165,102 @@ class ThreadPipeline:
         q1.put(None)
         self._log("capture_agent",
                   f"[FINISH] Captura concluída para {len(animal_tags)} animais.")
+
+    def _capture_loop_native(self, dataset, animal_tags, q1):
+        """Reproduz cada timestamp do dataset uma única vez.
+
+        Existe somente um produtor, como no modo FPS. Os deadlines são
+        relativos a um único relógio monotônico por animal, evitando que o
+        tempo de leitura de PNG se acumule como drift. Se o pipeline estiver
+        atrasado, não descartamos frames: a fila já é ilimitada no desenho
+        atual e o produtor recupera o atraso naturalmente.
+        """
+        for tag_idx, tag in enumerate(animal_tags):
+            index = dataset.load_index(tag)
+            index.sort(key=lambda x: x["relative_time_ms"])
+            times = np.array([x["relative_time_ms"] for x in index], dtype=float)
+            frames = index
+
+            if not frames:
+                self._log("capture_agent",
+                          f"[WARN] Animal {tag} possui simulation_index vazio.")
+                q1.put((_END_ANIMAL, tag, 0, None, None))
+                continue
+
+            first_dataset_ms = float(times[0])
+            end_ms = self._passage_end_ms(times)
+            span_s = (times[-1] - times[0]) / 1000.0
+            if span_s > self.ANOMALY_SPAN_SECONDS:
+                self._log("capture_agent",
+                          f"[WARN] Animal {tag} tem span anômalo: {span_s:.1f}s "
+                          f"({len(index)} frames). Considere --max_passage_seconds.")
+            self._log("capture_agent",
+                      f"[START] Animal {tag} ({tag_idx + 1}/{len(animal_tags)}) "
+                      f"- {len(index)} frames nativos, span {span_s:.2f}s")
+
+            captured_count = 0
+            first_capture = None
+            last_capture = None
+            replay_start = time.monotonic()
+
+            for frame_time, frame in zip(times, frames):
+                frame_time = float(frame_time)
+                if frame_time > end_ms:
+                    break
+
+                deadline = replay_start + (frame_time - first_dataset_ms) / 1000.0
+                sleep_for = deadline - time.monotonic()
+                if sleep_for > 0:
+                    time.sleep(sleep_for)
+
+                img = dataset.load_depth(tag, frame["depth_filename"])
+                if img is None:
+                    self._log(
+                        "capture_agent",
+                        f"[WARN] load_depth retornou None para "
+                        f"{tag}/{frame['depth_filename']}",
+                    )
+                    continue
+
+                now_iso = self._now()
+                if captured_count == 0:
+                    first_capture = now_iso
+                last_capture = now_iso
+                captured_count += 1
+
+                payload = {
+                    "frame_id": str(uuid.uuid4())[:12],
+                    "animal_id": tag,
+                    "frame_index": captured_count,
+                    # Mantém o timestamp original do índice, sem nearest-neighbor.
+                    "elapsed_time": frame_time,
+                    "dataset_timestamp_ms": frame_time,
+                    "label": frame.get("label"),
+                    "depth_filename": frame.get("depth_filename"),
+                    "img": img,
+                }
+                q1.put(payload)
+
+                if self.verbose:
+                    self._log(
+                        "capture_agent",
+                        f"[CAPTURE] animal={tag} idx={captured_count} "
+                        f"t={frame_time:.1f}ms label={frame.get('label')}",
+                    )
+
+            q1.put((_END_ANIMAL, tag, captured_count, first_capture, last_capture))
+            self._log(
+                "capture_agent",
+                f"[PASSAGE-COMPLETE] Animal {tag}: "
+                f"{captured_count} frames capturados.",
+            )
+
+        q1.put(None)
+        self._log(
+            "capture_agent",
+            f"[FINISH] Captura concluída para {len(animal_tags)} animais "
+            "(timestamps nativos).",
+        )
 
     def _passage_end_ms(self, times: np.ndarray) -> float:
         tmax = float(times[-1])
@@ -377,12 +485,17 @@ class ThreadPipeline:
     def _save_metrics(self, metrics):
         reports_dir = f"infra/reports/{self.pid}"
         os.makedirs(reports_dir, exist_ok=True)
+        capture_mode = "native-timestamps" if self.native_timestamps else None
+        if capture_mode is not None:
+            metrics["capture_mode"] = capture_mode
         with open(os.path.join(reports_dir, "metrics.json"), "w") as f:
             json.dump(metrics, f, indent=4)
         self._log("predict_weight_agent", f"[METRICS] Saved metrics.json to {reports_dir}")
         try:
             from mas.utils.report_collector import ReportCollector
-            ReportCollector().generate_report(reports_dir, self.mode, self.fps)
+            ReportCollector().generate_report(
+                reports_dir, self.mode, self.fps, capture_mode=capture_mode
+            )
             self._log("predict_weight_agent", f"[REPORT] Saved report.md to {reports_dir}")
         except Exception as e:
             self._log("predict_weight_agent", f"[REPORT-ERROR] generate_report failed: {e}")
@@ -419,8 +532,15 @@ class ThreadPipeline:
         inference_adapter = InferenceAdapter("infra/models/sheep_weight_predictor.tflite")
 
         self._log("ThreadPipeline", f"Iniciando pipeline de threads para PID: {self.pid}")
-        self._log("ThreadPipeline",
-                  f"Configuração: animais={len(animal_tags)}, fps={self.fps}, mode={self.mode}")
+        if self.native_timestamps:
+            self._log(
+                "ThreadPipeline",
+                f"Configuração: animais={len(animal_tags)}, "
+                f"timestamps=nativos, mode={self.mode}",
+            )
+        else:
+            self._log("ThreadPipeline",
+                      f"Configuração: animais={len(animal_tags)}, fps={self.fps}, mode={self.mode}")
 
         # 3. Monitores (threads independentes de 1s — nunca bloqueadas pelo pipeline)
         cpu_monitor = CPUMonitor(pid=self.pid, reports_dir="infra/reports")

@@ -1,0 +1,6 @@
+iteration,image_id,animal_id,prediction,total_stage_ns,total_stage_ms,tflite_total_ns,tflite_total_ms,invoke_ns,invoke_ms,input_shape,input_dtype,output_shape,output_dtype,timestamp_monotonic_ns,timestamp_utc
+1,img_5fe9b22e,608azf,14.9486722946167,96045959,96.045959,95818792,95.818792,95768084,95.768084,"(1, 300, 300, 3)",<class 'numpy.float32'>,"(1, 1)",<class 'numpy.float32'>,,
+2,img_ec031396,0009vd,38.131866455078125,87759125,87.759125,87678875,87.678875,87633708,87.633708,"(1, 300, 300, 3)",<class 'numpy.float32'>,"(1, 1)",<class 'numpy.float32'>,,
+3,img_0acf6cf7,0041vd,40.84761428833008,82163958,82.163958,82097875,82.097875,82057000,82.057,"(1, 300, 300, 3)",<class 'numpy.float32'>,"(1, 1)",<class 'numpy.float32'>,,
+4,img_b01bd4ee,0123vd,14.731554985046387,82126459,82.126459,81866042,81.866042,81822417,81.822417,"(1, 300, 300, 3)",<class 'numpy.float32'>,"(1, 1)",<class 'numpy.float32'>,,
+5,img_6812a9d8,0247,44.424072265625,82183125,82.183125,81909709,81.909709,81865833,81.865833,"(1, 300, 300, 3)",<class 'numpy.float32'>,"(1, 1)",<class 'numpy.float32'>,,
