@@ -35,8 +35,10 @@ from datetime import datetime
 import numpy as np
 
 from domain.helpers.capture_schedule import (
+    build_original_timing_schedule,
     build_fixed_fps_schedule,
     nearest_index,
+    passage_end_ms,
 )
 
 
@@ -258,10 +260,10 @@ class ThreadPipeline:
             last_capture = None
             replay_start = time.monotonic()
 
-            for frame_time, frame in zip(times, frames):
-                frame_time = float(frame_time)
-                if frame_time > end_ms:
-                    break
+            native_schedule = build_original_timing_schedule(times, end_ms)
+            for capture_event in native_schedule:
+                frame_time = capture_event.scheduled_capture_time_ms
+                frame = frames[capture_event.source_index]
 
                 deadline = replay_start + (frame_time - first_dataset_ms) / 1000.0
                 scheduled_monotonic_ns = round(deadline * 1_000_000_000)
@@ -342,11 +344,7 @@ class ThreadPipeline:
         )
 
     def _passage_end_ms(self, times: np.ndarray) -> float:
-        tmax = float(times[-1])
-        if self.max_passage_seconds is not None:
-            cap = float(times[0]) + self.max_passage_seconds * 1000.0
-            return min(tmax, cap)
-        return tmax
+        return passage_end_ms(times, self.max_passage_seconds)
 
     # ------------------------------------------------------------------ #
     # Select worker

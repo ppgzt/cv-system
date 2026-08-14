@@ -14,14 +14,15 @@ Uso:
                            do seletor x peso) e salva TODO o log em
                            infra/reports/<pid>/debug.log
     --engine             : 'thread' (padrão, pipeline de threads) | 'pade' (PADE/FIPA)
-    --native-timestamps  : somente no engine thread; captura cada frame uma vez,
-                           seguindo os relative_time_ms do simulation_index.json
+    --native-timestamps  : captura cada frame uma vez, seguindo os
+                           relative_time_ms do simulation_index.json
 
 Exemplos:
     python mas-main.py mas-single 5 3              # 3 animais a 5 fps (threads)
     python mas-main.py mas-batch 10                # todos os animais a 10 fps
-    python mas-main.py mas-single --native-timestamps  # todos os frames originais (threads)
+    python mas-main.py mas-single --native-timestamps  # todos os frames originais
     python mas-main.py mas-single --native-timestamps --num-animals 3
+    python mas-main.py mas-single --native-timestamps --engine pade
     python mas-main.py mas-single 5 3 --debug      # 3 animais, log detalhado
     python mas-main.py mas-single 5 3 --engine pade # mesmo pipeline via PADE/FIPA
     python mas-main.py mas-single 5 192 30 --debug # todos, cap 30s/animal, log detalhado
@@ -69,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--engine", choices=["thread", "pade"], default="thread",
                    help="engine de orquestração: 'thread' (padrão) ou 'pade'")
     p.add_argument("--native-timestamps", action="store_true",
-                   help="engine thread: segue os timestamps originais do dataset")
+                   help="segue os timestamps originais do dataset")
     return p
 
 
@@ -93,8 +94,6 @@ def main():
         else args.max_passage_seconds
     )
 
-    if args.native_timestamps and args.engine != "thread":
-        parser.error("--native-timestamps só está disponível com --engine thread")
     if not args.native_timestamps:
         if args.fps is None:
             parser.error("fps é obrigatório no modo normal")
@@ -132,6 +131,7 @@ def main():
                 fps=args.fps,
                 num_animals=num_animals,
                 max_passage_seconds=max_passage_seconds,
+                native_timestamps=args.native_timestamps,
                 verbose=args.debug,
             )
         else:

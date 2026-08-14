@@ -29,10 +29,11 @@ class MASStrategy:
         self,
         pid: str,
         mode: str,
-        fps: float,
+        fps: float | None,
         num_animals: int | None = None,
         max_passage_seconds: float | None = None,
         data_root: str = "data/exp1",
+        native_timestamps: bool = False,
         verbose: bool = False,
     ):
         self.pid = pid
@@ -41,6 +42,7 @@ class MASStrategy:
         self.num_animals = num_animals
         self.max_passage_seconds = max_passage_seconds
         self.data_root = data_root
+        self.native_timestamps = native_timestamps
         self.verbose = verbose
 
     def run(self):
@@ -55,6 +57,7 @@ class MASStrategy:
         from twisted.internet import reactor
 
         from mas.utils.animal_dataset import AnimalDataset
+        from mas.infrastructure.frame_store import FRAME_STORE
         from mas.agents.resource_manager_agent import ResourceManagerAgent
         from mas.agents.dataset_capture_agent import DatasetCaptureAgent
         from mas.agents.data_enhance_agent import DataEnhanceAgent
@@ -74,6 +77,7 @@ class MASStrategy:
 
         from mas.utils.report_collector import ReportCollector
         ReportCollector().reset()
+        FRAME_STORE.clear()
 
         # 2. Configuração via .env
         ams_host = os.getenv("SMA_AMS_HOST", "localhost")
@@ -85,7 +89,9 @@ class MASStrategy:
         display_message(
             "MASStrategy",
             f"Configuração: AMS={ams_host}:{ams_port}, BasePort={base_port}, "
-            f"animais={len(animal_tags)}, fps={self.fps}, mode={self.mode}",
+            f"animais={len(animal_tags)}, "
+            f"timing={'original' if self.native_timestamps else f'{self.fps} fps'}, "
+            f"mode={self.mode}",
         )
 
         # 3. AMS Agent (standalone)
@@ -144,8 +150,10 @@ class MASStrategy:
             animal_tags=animal_tags,
             fps=self.fps,
             max_passage_seconds=self.max_passage_seconds,
+            native_timestamps=self.native_timestamps,
             wait_for_aids=[selection_aid.name, predict_aid.name],
             predict_agent=predict_agent,
+            frame_store=FRAME_STORE,
             verbose=self.verbose,
         )
 

@@ -8,6 +8,7 @@ fundacao nao oferece nem pretende oferecer transporte de imagens multi-host.
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator, MutableMapping
 from typing import Generic, TypeVar
 
 
@@ -55,7 +56,54 @@ class FrameStore(Generic[FrameT]):
         with self._lock:
             return frame_id in self._frames
 
+    def keys_snapshot(self) -> tuple[str, ...]:
+        """Retorna chaves imutaveis sem expor o dicionario interno."""
+        with self._lock:
+            return tuple(self._frames)
 
-# Instancia destinada ao futuro caminho operacional PADE. Os agentes legados
-# continuam usando FRAME_BUFFER ate serem migrados em fases posteriores.
+
+class FrameStoreMapping(MutableMapping[str, FrameT]):
+    """Facade provisoria para consumidores que ainda esperam FRAME_BUFFER.
+
+    Todos os acessos delegam ao mesmo ``FrameStore`` sincronizado; nao existe
+    uma segunda copia dos arrays. A facade sera removida quando os consumidores
+    PADE forem migrados para usar ``FrameStore`` diretamente.
+    """
+
+    def __init__(self, store: FrameStore[FrameT]):
+        self._store = store
+
+    def __getitem__(self, frame_id: str) -> FrameT:
+        value = self._store.get(frame_id)
+        if value is None:
+            raise KeyError(frame_id)
+        return value
+
+    def __setitem__(self, frame_id: str, value: FrameT) -> None:
+        self._store.put(frame_id, value)
+
+    def __delitem__(self, frame_id: str) -> None:
+        if not self._store.discard(frame_id):
+            raise KeyError(frame_id)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._store.keys_snapshot())
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+    def get(self, frame_id: str, default=None):
+        value = self._store.get(frame_id)
+        return default if value is None else value
+
+    def pop(self, frame_id: str, default=None):
+        value = self._store.pop(frame_id)
+        return default if value is None else value
+
+    def clear(self) -> None:
+        self._store.clear()
+
+
+# Instancia autoritativa do caminho PADE. A facade legada FRAME_BUFFER delega
+# a este mesmo objeto ate os consumidores serem migrados em fases posteriores.
 FRAME_STORE: FrameStore = FrameStore()
