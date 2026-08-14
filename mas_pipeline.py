@@ -15,6 +15,7 @@ SingleStream/Batch seguem intocados.
 """
 
 import os
+import time
 
 
 class MASStrategy:
@@ -34,6 +35,7 @@ class MASStrategy:
         max_passage_seconds: float | None = None,
         data_root: str = "data/exp1",
         native_timestamps: bool = False,
+        capture_timing_enabled: bool = True,
         verbose: bool = False,
     ):
         self.pid = pid
@@ -43,10 +45,12 @@ class MASStrategy:
         self.max_passage_seconds = max_passage_seconds
         self.data_root = data_root
         self.native_timestamps = native_timestamps
+        self.capture_timing_enabled = capture_timing_enabled
         self.verbose = verbose
 
     def run(self):
         """Inicia os agentes PADE e o loop principal do reator."""
+        run_monotonic_origin_ns = time.monotonic_ns()
         from dotenv import load_dotenv
         load_dotenv(override=True)
 
@@ -67,6 +71,7 @@ class MASStrategy:
         from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
         from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
         from mas.adapters.inference_adapter import InferenceAdapter
+        from mas.infrastructure.pade_telemetry import PadeTelemetrySession
 
         # 1. Dataset + ordem dos animais (alfabética por tag)
         dataset = AnimalDataset(self.data_root)
@@ -128,6 +133,16 @@ class MASStrategy:
         )
         inference_adapter = InferenceAdapter(weight_model_path)
 
+        condition = (
+            "pade_original_timing"
+            if self.native_timestamps
+            else "pade_fixed_fps"
+        )
+        # A sessao será criada depois dos agentes, pois observa diretamente
+        # suas OrderedInboxes. Estes valores permanecem opacos à telemetria.
+        telemetry_condition = condition
+        telemetry_capture_fps = None if self.native_timestamps else self.fps
+
         # 6. Agents
         predict_agent = PredictWeightAgent(
             aid=predict_aid,
@@ -181,7 +196,24 @@ class MASStrategy:
         )
         resource_agent.ams = {"name": ams_host, "port": ams_port}
 
-        # 7. Hook de shutdown limpo para o monitor de recursos
+        telemetry = PadeTelemetrySession(
+            run_id=self.pid,
+            condition=telemetry_condition,
+            capture_fps=telemetry_capture_fps,
+            monotonic_origin_ns=run_monotonic_origin_ns,
+            selection_inbox=selection_agent.inbox,
+            enhance_inbox=enhance_agent.inbox,
+            prediction_inbox=predict_agent.inbox,
+            capture_timing_enabled=self.capture_timing_enabled,
+        )
+        capture_agent.telemetry_context = telemetry.context
+        capture_agent.capture_timing_recorder = telemetry.capture_timing_recorder
+        selection_agent.telemetry_context = telemetry.context
+        selection_agent.capture_timing_recorder = telemetry.capture_timing_recorder
+
+        # 7. Hooks de shutdown: EndPipeline continua sendo o gatilho lógico;
+        # estes callbacks apenas persistem observabilidade no shutdown global.
+        reactor.addSystemEventTrigger('before', 'shutdown', telemetry.stop)
         reactor.addSystemEventTrigger(
             'before', 'shutdown', resource_agent.stop_monitoring
         )
@@ -191,6 +223,10 @@ class MASStrategy:
             resource_agent, capture_agent, enhance_agent,
             selection_agent, predict_agent,
         ]
+
+        # Ambos iniciam antes de qualquer on_start que possa admitir o primeiro
+        # frame. Permanecem ativos até o shutdown posterior ao drain global.
+        telemetry.start()
 
         for agent in all_agents:
             agent.update_ams(resource_agent.ams)

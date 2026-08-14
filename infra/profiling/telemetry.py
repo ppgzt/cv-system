@@ -155,9 +155,73 @@ class CaptureTimingRecorder:
         self.context = context
         self.reports_dir = Path(reports_dir)
         self._rows: list[dict] = []
+        self._pending_events: dict[str, dict] = {}
         self._lock = threading.Lock()
         self.persist_error: OSError | None = None
         self.dropped_events = 0
+
+    def register_scheduled_event(
+        self,
+        *,
+        passage_id: str,
+        capture_index: int,
+        frame_id: str,
+        source_filename: str,
+        source_relative_time_ms: float,
+        scheduled_capture_time_ms: float,
+        scheduled_monotonic_ns: int,
+    ) -> bool:
+        """Guarda o schedule até a admissão lógica ser observada.
+
+        Este método não define onde ocorre a admissão. O produtor registra o
+        deadline e o receptor da primeira borda chama ``record_admission``.
+        Assim, runtimes assíncronos não confundem envio com enqueue lógico.
+        """
+        try:
+            pending = {
+                "passage_id": passage_id,
+                "capture_index": capture_index,
+                "frame_id": frame_id,
+                "source_filename": source_filename,
+                "source_relative_time_ms": source_relative_time_ms,
+                "scheduled_capture_time_ms": scheduled_capture_time_ms,
+                "scheduled_monotonic_ns": scheduled_monotonic_ns,
+            }
+            with self._lock:
+                if frame_id in self._pending_events:
+                    raise ValueError(f"duplicate pending frame_id: {frame_id}")
+                self._pending_events[frame_id] = pending
+            return True
+        except Exception:
+            with self._lock:
+                self.dropped_events += 1
+            return False
+
+    def record_admission(
+        self,
+        frame_id: str,
+        actual_admission_monotonic_ns: int,
+    ) -> bool:
+        """Completa um registro após a admissão na primeira borda lógica."""
+        with self._lock:
+            pending = self._pending_events.pop(frame_id, None)
+        if pending is None:
+            with self._lock:
+                self.dropped_events += 1
+            return False
+        return self.record(
+            **pending,
+            actual_enqueue_monotonic_ns=actual_admission_monotonic_ns,
+        )
+
+    def discard_scheduled_event(self, frame_id: str) -> bool:
+        """Descarta schedule cujo evento não pôde ser publicado."""
+        with self._lock:
+            return self._pending_events.pop(frame_id, None) is not None
+
+    def pending_count(self) -> int:
+        with self._lock:
+            return len(self._pending_events)
 
     def record(
         self,

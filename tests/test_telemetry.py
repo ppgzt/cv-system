@@ -152,6 +152,31 @@ class VcgencmdParsingTests(unittest.TestCase):
 
 
 class TelemetryMonitorTests(unittest.TestCase):
+    def test_capture_timing_two_phase_admission_uses_receiver_timestamp(self):
+        context = TelemetryContext(
+            "capture-run", "pade_fixed_fps", 2.0,
+            monotonic_origin_ns=1_000_000_000,
+        )
+        recorder = CaptureTimingRecorder(context)
+
+        self.assertTrue(recorder.register_scheduled_event(
+            passage_id="N",
+            capture_index=1,
+            frame_id="frame",
+            source_filename="source.png",
+            source_relative_time_ms=500.0,
+            scheduled_capture_time_ms=500.0,
+            scheduled_monotonic_ns=1_500_000_000,
+        ))
+        self.assertEqual(recorder.pending_count(), 1)
+        self.assertTrue(recorder.record_admission("frame", 1_513_000_000))
+
+        self.assertEqual(recorder.pending_count(), 0)
+        rows = recorder.get_all_data()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["actual_enqueue_monotonic_ns"], 1_513_000_000)
+        self.assertEqual(rows[0]["lateness_ms"], 13.0)
+
     def test_capture_timing_csv_header_and_nullable_values(self):
         with tempfile.TemporaryDirectory() as reports_dir:
             context = TelemetryContext(

@@ -35,6 +35,7 @@ from domain.pipeline_events import (
     FrameEvent,
     event_to_dict,
 )
+from infra.profiling.telemetry import CaptureTimingRecorder, TelemetryContext
 from mas.infrastructure.frame_store import FRAME_STORE, FrameStore
 from mas.infrastructure.stream_sequence import StreamSequencer
 from mas.utils.animal_dataset import AnimalDataset
@@ -59,6 +60,8 @@ class DatasetCaptureBehaviour(Behaviour):
         max_passage_seconds: float | None = None,
         native_timestamps: bool = False,
         frame_store: FrameStore = FRAME_STORE,
+        telemetry_context: TelemetryContext | None = None,
+        capture_timing_recorder: CaptureTimingRecorder | None = None,
         verbose: bool = False,
         *,
         call_later: Callable | None = None,
@@ -78,6 +81,8 @@ class DatasetCaptureBehaviour(Behaviour):
         self.max_passage_seconds = max_passage_seconds
         self.native_timestamps = native_timestamps
         self.frame_store = frame_store
+        self.telemetry_context = telemetry_context
+        self.capture_timing_recorder = capture_timing_recorder
         self.verbose = verbose
 
         self._call_later = call_later or reactor.callLater
@@ -144,6 +149,9 @@ class DatasetCaptureBehaviour(Behaviour):
         self.captured_count = 0
         self.first_capture = None
         self.last_capture = None
+
+        if self.telemetry_context is not None:
+            self.telemetry_context.set_capture_passage_id(tag)
 
         if not index:
             display_message(
@@ -229,10 +237,30 @@ class DatasetCaptureBehaviour(Behaviour):
 
         # O array fica disponivel antes da publicacao dos metadados.
         self.frame_store.put(frame_id, img)
-        # A futura CaptureTimingRecorder do PADE deve registrar a admissao
-        # depois que Selection inserir este evento em sua OrderedInbox. O
-        # send ACL abaixo, isoladamente, nao prova admissao na primeira borda.
-        self._send_pipeline_event(event)
+        if self.capture_timing_recorder is not None:
+            offset_s = (
+                capture_event.scheduled_capture_time_ms
+                - self._current_plan.first_timestamp_ms
+            ) / 1000.0
+            self.capture_timing_recorder.register_scheduled_event(
+                passage_id=tag,
+                capture_index=self.captured_count,
+                frame_id=frame_id,
+                source_filename=frame.get("depth_filename") or "",
+                source_relative_time_ms=float(frame["relative_time_ms"]),
+                scheduled_capture_time_ms=(
+                    capture_event.scheduled_capture_time_ms
+                ),
+                scheduled_monotonic_ns=int(
+                    round((self._passage_start + offset_s) * 1_000_000_000)
+                ),
+            )
+        try:
+            self._send_pipeline_event(event)
+        except Exception:
+            if self.capture_timing_recorder is not None:
+                self.capture_timing_recorder.discard_scheduled_event(frame_id)
+            raise
 
         if self.verbose:
             display_message(
@@ -315,6 +343,8 @@ class DatasetCaptureAgent(Agent):
         native_timestamps: bool = False,
         wait_for_aids: list[str] | None = None,
         frame_store: FrameStore = FRAME_STORE,
+        telemetry_context: TelemetryContext | None = None,
+        capture_timing_recorder: CaptureTimingRecorder | None = None,
         debug: bool = False,
         verbose: bool = False,
     ):
@@ -330,6 +360,8 @@ class DatasetCaptureAgent(Agent):
         self.max_passage_seconds = max_passage_seconds
         self.native_timestamps = native_timestamps
         self.frame_store = frame_store
+        self.telemetry_context = telemetry_context
+        self.capture_timing_recorder = capture_timing_recorder
         self.verbose = verbose
         self.wait_for_aids = set(wait_for_aids) if wait_for_aids else set()
         self.ready_agents: set[str] = set()
@@ -347,6 +379,8 @@ class DatasetCaptureAgent(Agent):
             max_passage_seconds=self.max_passage_seconds,
             native_timestamps=self.native_timestamps,
             frame_store=self.frame_store,
+            telemetry_context=self.telemetry_context,
+            capture_timing_recorder=self.capture_timing_recorder,
             verbose=self.verbose,
         )
         self.behaviours.append(self.capture_behaviour)

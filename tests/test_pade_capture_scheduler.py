@@ -13,6 +13,7 @@ from domain.helpers.capture_schedule import (
     build_original_timing_schedule,
     build_passage_capture_plan,
 )
+from infra.profiling.telemetry import CaptureTimingRecorder, TelemetryContext
 from mas.agents.dataset_capture_agent import DatasetCaptureBehaviour
 from mas.infrastructure.frame_store import FRAME_STORE, FrameStore
 from mas.utils.globals import FRAME_BUFFER
@@ -180,6 +181,8 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         native_timestamps=False,
         max_passage_seconds=None,
         missing=(),
+        telemetry_context=None,
+        capture_timing_recorder=None,
     ):
         scheduler = FakeScheduler()
         store = FrameStore()
@@ -196,6 +199,8 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             max_passage_seconds=max_passage_seconds,
             native_timestamps=native_timestamps,
             frame_store=store,
+            telemetry_context=telemetry_context,
+            capture_timing_recorder=capture_timing_recorder,
             call_later=scheduler.call_later,
             monotonic=lambda: scheduler.now,
             iso_now=lambda: f"t={scheduler.now:.3f}",
@@ -204,6 +209,25 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         behaviour.start()
         scheduler.run_all()
         return scheduler, store, dataset, agent, behaviour
+
+    def test_capture_sets_context_and_registers_schedule_without_using_send_time(self):
+        context = TelemetryContext(
+            "pade-run", "pade_fixed_fps", 2.0,
+            monotonic_origin_ns=0,
+        )
+        recorder = CaptureTimingRecorder(context)
+        scheduler, _, _, _, _ = self.run_capture(
+            {"N": make_index([0.0, 500.0])},
+            fps=2.0,
+            telemetry_context=context,
+            capture_timing_recorder=recorder,
+        )
+
+        # Capture não usa Agent.send como admissão: os dois schedules ainda
+        # aguardam confirmação no receptor Selection.inbox.put().
+        self.assertEqual(recorder.pending_count(), 2)
+        self.assertEqual(recorder.get_all_data(), [])
+        self.assertEqual(scheduler.now, 0.5)
 
     def test_fixed_fps_end_has_no_extra_tick_for_multiple_nonmultiple_and_one_fps(self):
         cases = [

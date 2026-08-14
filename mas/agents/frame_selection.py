@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import queue
+import time
 from typing import Callable
 
 from twisted.internet.defer import DeferredSemaphore
@@ -28,6 +29,7 @@ from domain.pipeline_events import (
     event_from_json,
     event_to_json,
 )
+from infra.profiling.telemetry import CaptureTimingRecorder, TelemetryContext
 from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
 from mas.infrastructure.frame_store import FRAME_STORE, FrameStore
 from mas.infrastructure.ordered_inbox import OrderedInbox, OrderedInboxClosed
@@ -50,6 +52,9 @@ class FrameSelectionAgent(Agent):
         frame_store: FrameStore = FRAME_STORE,
         inbox: OrderedInbox[PipelineEvent] | None = None,
         output_sequencer: StreamSequencer | None = None,
+        telemetry_context: TelemetryContext | None = None,
+        capture_timing_recorder: CaptureTimingRecorder | None = None,
+        monotonic_ns: Callable[[], int] = time.monotonic_ns,
         defer_executor: Callable = deferToThread,
         debug: bool = False,
         verbose: bool = False,
@@ -64,6 +69,9 @@ class FrameSelectionAgent(Agent):
         self.frame_store = frame_store
         self.inbox = inbox or OrderedInbox()
         self.output_sequencer = output_sequencer or StreamSequencer()
+        self.telemetry_context = telemetry_context
+        self.capture_timing_recorder = capture_timing_recorder
+        self._monotonic_ns = monotonic_ns
         self._defer_executor = defer_executor
         self.verbose = verbose
 
@@ -85,8 +93,6 @@ class FrameSelectionAgent(Agent):
 
         try:
             event = event_from_json(message.content)
-            # Ponto conceitual de admissao Capture -> Selection. A futura
-            # CaptureTimingRecorder deve observar este put, nao Agent.send().
             self.inbox.put(event)
         except (TypeError, ValueError, OrderedInboxClosed) as exc:
             display_message(
@@ -94,6 +100,43 @@ class FrameSelectionAgent(Agent):
                 f"[ERROR] Invalid ordered pipeline event: {exc}",
             )
             return
+
+        # Admissao real na primeira borda: o timestamp é obtido imediatamente
+        # depois do put, nunca no Agent.send(). Falha do relógio é observacional.
+        try:
+            actual_admission_ns = self._monotonic_ns()
+        except Exception as exc:
+            actual_admission_ns = None
+            display_message(
+                self.aid.name,
+                f"[ERROR] Capture admission clock failed: {exc}",
+            )
+
+        try:
+            if (
+                isinstance(event, FrameEvent)
+                and self.capture_timing_recorder is not None
+                and actual_admission_ns is not None
+            ):
+                self.capture_timing_recorder.record_admission(
+                    event.frame_id,
+                    actual_admission_ns,
+                )
+            elif (
+                isinstance(event, EndPassageEvent)
+                and self.telemetry_context is not None
+            ):
+                # Limpeza condicional: N+1 pode ter iniciado antes da chegada
+                # física deste END, sem apagar o contexto mais novo.
+                self.telemetry_context.clear_capture_passage_id(
+                    event.passage_id
+                )
+        except Exception as exc:
+            # Telemetria nunca bloqueia o consumidor de domínio.
+            display_message(
+                self.aid.name,
+                f"[ERROR] Capture telemetry admission failed: {exc}",
+            )
 
         self._drain_inbox()
 
