@@ -1,0 +1,5 @@
+native	1	OK	./power_runs/battery_mas-single_native_20260713_185901/mas-single_native_r1
+native	2	OK	./power_runs/battery_mas-single_native_20260713_185901/mas-single_native_r2
+native	3	OK	./power_runs/battery_mas-single_native_20260713_185901/mas-single_native_r3
+native	4	OK	./power_runs/battery_mas-single_native_20260713_185901/mas-single_native_r4
+native	5	OK	./power_runs/battery_mas-single_native_20260713_185901/mas-single_native_r5

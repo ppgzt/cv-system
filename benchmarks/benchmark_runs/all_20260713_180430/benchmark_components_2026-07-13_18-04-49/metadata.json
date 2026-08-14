@@ -1,0 +1,298 @@
+{
+  "benchmark": "component_microbenchmark",
+  "generated_utc": "2026-07-13T21:08:00.581005Z",
+  "config": {
+    "component": "all",
+    "warmup": 50,
+    "iterations": 1000,
+    "seed": 42,
+    "num_threads": 2,
+    "threshold": 0.5,
+    "pool_size": 300,
+    "monitor_interval": 1.0,
+    "decompose_enhancer": false,
+    "data_root": "data/exp1",
+    "selector_model": "infra/models/frame_selector.tflite",
+    "predictor_model": "infra/models/sheep_weight_predictor.tflite",
+    "start_utc": "2026-07-13T21:04:34.248808Z",
+    "end_utc": "2026-07-13T21:07:38.441223Z"
+  },
+  "environment_before": {
+    "timestamp_utc": "2026-07-13T21:04:34.248808Z",
+    "hostname": "raspberrypi",
+    "platform": "Linux-6.12.47+rpt-rpi-2712-aarch64-with-glibc2.41",
+    "system": "Linux",
+    "release": "6.12.47+rpt-rpi-2712",
+    "kernel_version": "#1 SMP PREEMPT Debian 1:6.12.47-1+rpt1 (2025-09-16)",
+    "architecture": "aarch64",
+    "processor": "not_available",
+    "device_model": "Raspberry Pi 5 Model B Rev 1.1\u0000",
+    "cpu": {
+      "model_name": "not_available",
+      "hardware": "not_available",
+      "revision": "e04171",
+      "logical_cores": 4,
+      "physical_cores": 4,
+      "frequency_mhz": {
+        "current": 2400.0,
+        "min": 1500.0,
+        "max": 2400.0
+      },
+      "cpufreq_sys": {
+        "scaling_cur_freq_hz": 2400000000,
+        "scaling_min_freq_hz": 1500000000,
+        "scaling_max_freq_hz": 2400000000,
+        "governor": "ondemand"
+      },
+      "clock_arm_hz": 2400027136
+    },
+    "memory": {
+      "total_bytes": 17006837760,
+      "available_bytes": 16585129984,
+      "available_gb": 16.585,
+      "total_gb": 17.007
+    },
+    "python": {
+      "version": "3.12.8",
+      "implementation": "CPython",
+      "executable": "/home/ewertonsjp/.pyenv/versions/cv_vend_mas/bin/python"
+    },
+    "libraries": {
+      "tensorflow": "2.20.0",
+      "tflite_runtime": "not_available",
+      "numpy": "2.4.2",
+      "scipy": "1.17.0",
+      "psutil": "7.2.2",
+      "scikit-image (skimage)": "0.26.0",
+      "pillow (PIL)": "12.1.1",
+      "opencv (cv2)": "not_available",
+      "matplotlib": "not_available",
+      "tf.lite.Interpreter": "available (class)",
+      "tf.lite_module_path": "tensorflow.lite.python.interpreter"
+    },
+    "thread_env_vars": {
+      "OMP_NUM_THREADS": "not_available",
+      "OPENBLAS_NUM_THREADS": "not_available",
+      "MKL_NUM_THREADS": "not_available",
+      "TF_NUM_INTRAOP_THREADS": "not_available",
+      "TF_NUM_INTEROP_THREADS": "not_available",
+      "TF_INTRA_OP_PARALLELISM_THREADS": "1",
+      "TF_INTER_OP_PARALLELISM_THREADS": "1",
+      "TF_ENABLE_ONEDNN_OPTS": "0",
+      "KERAS_BACKEND": "tensorflow",
+      "XNNPACK_FLAGS": "not_available"
+    },
+    "load_average": [
+      0.0830078125,
+      0.06787109375,
+      0.029296875
+    ],
+    "process_cpu_affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "temperature_celsius": 50.5,
+    "throttled": {
+      "raw": "0x0",
+      "undervoltage_now": false,
+      "freq_capped_now": false,
+      "throttled_now": false,
+      "soft_temp_now": false,
+      "undervoltage_occurred": false,
+      "freq_capped_occurred": false,
+      "throttled_occurred": false,
+      "soft_temp_occurred": false
+    }
+  },
+  "environment_after": {
+    "timestamp_utc": "2026-07-13T21:07:38.441223Z",
+    "hostname": "raspberrypi",
+    "platform": "Linux-6.12.47+rpt-rpi-2712-aarch64-with-glibc2.41",
+    "system": "Linux",
+    "release": "6.12.47+rpt-rpi-2712",
+    "kernel_version": "#1 SMP PREEMPT Debian 1:6.12.47-1+rpt1 (2025-09-16)",
+    "architecture": "aarch64",
+    "processor": "not_available",
+    "device_model": "Raspberry Pi 5 Model B Rev 1.1\u0000",
+    "cpu": {
+      "model_name": "not_available",
+      "hardware": "not_available",
+      "revision": "e04171",
+      "logical_cores": 4,
+      "physical_cores": 4,
+      "frequency_mhz": {
+        "current": 2400.0,
+        "min": 1500.0,
+        "max": 2400.0
+      },
+      "cpufreq_sys": {
+        "scaling_cur_freq_hz": 2400000000,
+        "scaling_min_freq_hz": 1500000000,
+        "scaling_max_freq_hz": 2400000000,
+        "governor": "ondemand"
+      },
+      "clock_arm_hz": 2400023808
+    },
+    "memory": {
+      "total_bytes": 17006837760,
+      "available_bytes": 15915925504,
+      "available_gb": 15.916,
+      "total_gb": 17.007
+    },
+    "python": {
+      "version": "3.12.8",
+      "implementation": "CPython",
+      "executable": "/home/ewertonsjp/.pyenv/versions/cv_vend_mas/bin/python"
+    },
+    "libraries": {
+      "tensorflow": "2.20.0",
+      "tflite_runtime": "not_available",
+      "numpy": "2.4.2",
+      "scipy": "1.17.0",
+      "psutil": "7.2.2",
+      "scikit-image (skimage)": "0.26.0",
+      "pillow (PIL)": "12.1.1",
+      "opencv (cv2)": "not_available",
+      "matplotlib": "not_available",
+      "tf.lite.Interpreter": "available (class)",
+      "tf.lite_module_path": "tensorflow.lite.python.interpreter"
+    },
+    "thread_env_vars": {
+      "OMP_NUM_THREADS": "not_available",
+      "OPENBLAS_NUM_THREADS": "not_available",
+      "MKL_NUM_THREADS": "not_available",
+      "TF_NUM_INTRAOP_THREADS": "not_available",
+      "TF_NUM_INTEROP_THREADS": "not_available",
+      "TF_INTRA_OP_PARALLELISM_THREADS": "1",
+      "TF_INTER_OP_PARALLELISM_THREADS": "1",
+      "TF_ENABLE_ONEDNN_OPTS": "0",
+      "KERAS_BACKEND": "tensorflow",
+      "XNNPACK_FLAGS": "not_available"
+    },
+    "load_average": [
+      1.8310546875,
+      0.8818359375,
+      0.3564453125
+    ],
+    "process_cpu_affinity": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "temperature_celsius": 73.6,
+    "throttled": {
+      "raw": "0x0",
+      "undervoltage_now": false,
+      "freq_capped_now": false,
+      "throttled_now": false,
+      "soft_temp_now": false,
+      "undervoltage_occurred": false,
+      "freq_capped_occurred": false,
+      "throttled_occurred": false,
+      "soft_temp_occurred": false
+    }
+  },
+  "models": {
+    "selector": {
+      "num_threads": 2,
+      "path": "infra/models/frame_selector.tflite",
+      "sha256": "2d2b8a2ddde53fa4738d0d93b6a1a67c54e925999c8c8bdc9df7e010589ccfbf",
+      "size_mb": 9.523,
+      "threshold": 0.5,
+      "input_shape": "(1, 224, 224, 3)",
+      "input_dtype": "<class 'numpy.float32'>",
+      "preprocessing": {
+        "resize": "224x224 bilinear (no pad)",
+        "clip_max": 4000.0,
+        "norm_scale": 2000.0,
+        "offset": -1.0,
+        "grayscale_to_rgb": true
+      },
+      "delegates": "TFLite CPU default delegate (XNNPACK when available; not explicitly configured by the pipeline)",
+      "delegate_verification": "best_effort: TFLite does not expose a stable public delegate introspection API"
+    },
+    "enhancer": {
+      "num_threads": null,
+      "transforms": [
+        "NoiseRemovalSetMaxValue(1950)",
+        "AdjustScaleWithFixedMaxValue(1950)",
+        "Replicate1DtoNDimChannel(3)",
+        "ResizeImageWithPadding((300,300))"
+      ],
+      "input_shape": "(240, 320)",
+      "input_dtype": "uint16",
+      "delegates": null,
+      "delegate_verification": "not_applicable"
+    },
+    "predictor": {
+      "num_threads": 2,
+      "path": "infra/models/sheep_weight_predictor.tflite",
+      "sha256": "15b9d310c8deffc4629a107b62e889d13c8fb55186759c595ee7b0c192e50d4a",
+      "size_mb": 51.992,
+      "input_shape": "(1, 300, 300, 3)",
+      "input_dtype": "<class 'numpy.float32'>",
+      "output_shape": "(1, 1)",
+      "output_dtype": "<class 'numpy.float32'>",
+      "delegates": "TFLite CPU default delegate (XNNPACK when available; not explicitly configured by the pipeline)",
+      "delegate_verification": "best_effort: TFLite does not expose a stable public delegate introspection API"
+    },
+    "aggregation": {
+      "operation": "float(np.mean(weights))",
+      "sizes": [
+        1,
+        5,
+        10,
+        20,
+        50
+      ],
+      "delegates": null,
+      "delegate_verification": "not_applicable"
+    }
+  },
+  "pools": {
+    "selector": {
+      "suited_unique": 150,
+      "not_suited_unique": 150,
+      "total_unique": 300,
+      "available_suited": 1655,
+      "available_not_suited": 12086
+    },
+    "enhancer": {
+      "suited_unique": 300,
+      "available_suited": 1655
+    },
+    "predictor": {
+      "suited_unique": 250,
+      "available_suited": 1655
+    },
+    "aggregation": {
+      "note": "pesos sint\u00e9ticos (seed fixa)"
+    }
+  },
+  "bootstrap": {
+    "method": "bootstrap_percentile",
+    "n_resamples": 10000,
+    "seed": 42,
+    "ci_level": 0.95,
+    "statistics": [
+      "median",
+      "p1",
+      "p5",
+      "p10",
+      "p25",
+      "p75",
+      "p90",
+      "p95",
+      "p99"
+    ],
+    "mean_ci": "t-Student 95%"
+  },
+  "notes": {
+    "delegates": "Selector/predictor: delegate CPU padr\u00e3o do TFLite, n\u00e3o configurado explicitamente; enhancer/aggregation: n\u00e3o aplic\u00e1vel.",
+    "timed_regions": "ver BENCHMARK_COMPONENTS.md e report.md",
+    "warmup_disclaimer": "warm-ups N\u00c3O s\u00e3o misturados com as medi\u00e7\u00f5es v\u00e1lidas"
+  }
+}

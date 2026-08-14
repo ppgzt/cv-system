@@ -176,6 +176,37 @@ mas/pade/web/data.sqlite
 /data-analysis/*.pdf
 /data-analysis/notebook_summary.txt
 /data-analysis/tabela_resultados_tcc1.csv
+/article/
+
+# Checkpoint IEEE AIoT: materiais privados, intermediarios ou reproduziveis
+/DOSSIER_REESCRITA_PIPELINE_MATERIAIS_METODOS.md
+/auditoria_ieee_aiot_2026/
+/outputs_baseline/
+
+# Variantes locais do artigo. Fontes cientificas selecionadas nestas arvores
+# sao tracked explicitamente e continuam versionadas apesar destas regras.
+/article_artifacts/**
+/article_artifacts_compact/**
+/article_artifacts_revised/
+
+# Notebooks exploratorios substituidos pelas versoes corrected/compact
+/data-analysis/CONTEXTO_NOTEBOOK_ANALISE.md
+/data-analysis/baseline_5runs_analysis.ipynb
+/data-analysis/benchmark_components_analysis.ipynb
+
+# Tentativas incompletas e outputs derivados das campanhas
+/power_runs/battery_mas-single_20260708_103944/
+/power_runs/battery_mas-single_20260708_104033/
+/power_runs/battery_mas-single_20260708_104924/residual_analysis/
+/power_runs/battery_mas-single_native_20260713_185901/**/report.md
+
+# Relatorios e figuras derivados dos microbenchmarks; os CSVs brutos,
+# metadados e summaries selecionados permanecem tracked.
+/benchmarks/benchmark_runs/**/analysis_components/
+/benchmarks/benchmark_runs/**/article_table*
+/benchmarks/benchmark_runs/**/plots_ERROR.txt
+/benchmarks/benchmark_runs/**/report.md
+/benchmarks/runs/**/analysis_components/
 
 # Include debug files from reports
 !infra/reports/*/debug.jog

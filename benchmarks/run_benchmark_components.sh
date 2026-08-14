@@ -90,7 +90,11 @@ SSH_STATUS=${PIPESTATUS[0]}
 echo "[T1] fim:    $(ts) (exit=${SSH_STATUS})" | tee -a "$SSH_LOG"
 
 # --- 2. Captura o __REPORT_DIR__ impresso pelo benchmark -----------------------
-REMOTE_DIR=$(grep -m1 '^__REPORT_DIR__=' "$SSH_LOG" | cut -d= -f2- | tr -d '\r')
+# TensorFlow pode escrever um byte NUL no stderr; nesse caso o grep padrão
+# classifica o log como binário e devolve "Binary file ... matches" em vez da
+# linha encontrada. -a força tratamento textual e mantém o caminho do relatório.
+REMOTE_DIR=$(LC_ALL=C grep -a -m1 '^__REPORT_DIR__=' "$SSH_LOG" \
+    | cut -d= -f2- | tr -d '\r\000')
 if [ -z "$REMOTE_DIR" ]; then
     # fallback: pega a pasta mais recente no Pi
     REMOTE_DIR=$(ssh -o BatchMode=yes "$PI_HOST" \
@@ -125,3 +129,7 @@ if [ -n "$LOCAL_REPORT" ]; then
 fi
 [ "$SSH_STATUS" -ne 0 ] && echo "  [WARN] benchmark saiu com erro — veja ${SSH_LOG}"
 echo "=========================================================="
+
+if [ "$SSH_STATUS" -ne 0 ] || [ -z "$LOCAL_REPORT" ]; then
+    exit 1
+fi
