@@ -122,8 +122,14 @@ class ThreadPipeline:
             first_capture = None
             last_capture = None
 
-            # Pacing de parede fiel ao TimedBehaviour (deadline-based)
-            next_tick = time.monotonic()
+            # Pacing de parede fiel ao TimedBehaviour (deadline-based).
+            # FRAMEs seguem os ticks de captura; END_ANIMAL segue o limite
+            # temporal real da passagem e não cria um tick adicional.
+            passage_start = time.monotonic()
+            passage_end_deadline = (
+                passage_start + (end_ms - float(times[0])) / 1000.0
+            )
+            next_tick = passage_start
             while virtual_clock <= end_ms:
                 j = self._nearest_index(times, virtual_clock)
                 frame = frames[j]
@@ -153,7 +159,10 @@ class ThreadPipeline:
 
                 virtual_clock += step_ms
                 next_tick += period
-                sleep_for = next_tick - time.monotonic()
+                next_deadline = (
+                    next_tick if virtual_clock <= end_ms else passage_end_deadline
+                )
+                sleep_for = next_deadline - time.monotonic()
                 if sleep_for > 0:
                     time.sleep(sleep_for)
 
@@ -247,6 +256,15 @@ class ThreadPipeline:
                         f"[CAPTURE] animal={tag} idx={captured_count} "
                         f"t={frame_time:.1f}ms label={frame.get('label')}",
                     )
+
+            # Se max_passage_seconds terminar entre dois timestamps originais,
+            # preserva o limite real da passagem sem inventar um frame/tick.
+            passage_end_deadline = (
+                replay_start + (end_ms - first_dataset_ms) / 1000.0
+            )
+            sleep_for = passage_end_deadline - time.monotonic()
+            if sleep_for > 0:
+                time.sleep(sleep_for)
 
             q1.put((_END_ANIMAL, tag, captured_count, first_capture, last_capture))
             self._log(
