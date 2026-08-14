@@ -177,6 +177,7 @@ mas/pade/web/data.sqlite
 /data-analysis/notebook_summary.txt
 /data-analysis/tabela_resultados_tcc1.csv
 /article/
+/docs/
 
 # Checkpoint IEEE AIoT: materiais privados, intermediarios ou reproduziveis
 /DOSSIER_REESCRITA_PIPELINE_MATERIAIS_METODOS.md
