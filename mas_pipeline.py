@@ -161,6 +161,7 @@ class MASStrategy:
             aid=enhance_aid,
             data_enhance_adapter=enhance_adapter,
             next_agent_aid=predict_aid.name,
+            frame_store=FRAME_STORE,
         )
 
         selection_agent = FrameSelectionAgent(
@@ -169,6 +170,7 @@ class MASStrategy:
             next_agent_aid=enhance_aid.name,
             predict_agent_aid=predict_aid.name,
             capture_agent_aid=capture_aid.name,
+            frame_store=FRAME_STORE,
             verbose=self.verbose,
         )
 

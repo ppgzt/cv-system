@@ -342,25 +342,31 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertEqual(summary[-1][1], "end_pipeline")
         self.assertEqual([item[0] for item in predict.notifications], ["N", "N+1"])
 
-    def test_legacy_bridge_is_derived_from_ordered_events(self):
+    def test_capture_emits_canonical_pipeline_events(self):
         _, _, _, agent, _, _ = self.run_capture(
             {"N": make_index([0.0])},
             fps=1.0,
         )
 
         frame_message = next(
-            item for item in agent.sent if item[1] == "frame-capture"
+            item for item in agent.sent if item[2].get("event_type") == "frame"
         )
         end_message = next(
-            item for item in agent.sent if item[1] == "passage-complete"
+            item
+            for item in agent.sent
+            if item[2].get("event_type") == "end_passage"
         )
 
+        self.assertEqual(frame_message[1], "pipeline-event")
         self.assertEqual(frame_message[2]["event_type"], "frame")
-        self.assertEqual(frame_message[2]["animal_id"], "N")
-        self.assertEqual(frame_message[2]["frame_index"], 1)
+        self.assertEqual(frame_message[2]["passage_id"], "N")
+        self.assertEqual(frame_message[2]["capture_index"], 1)
+        self.assertNotIn("animal_id", frame_message[2])
+        self.assertEqual(end_message[1], "pipeline-event")
         self.assertEqual(end_message[2]["event_type"], "end_passage")
-        self.assertEqual(end_message[2]["animal_id"], "N")
-        self.assertEqual(end_message[2]["total_frames"], 1)
+        self.assertEqual(end_message[2]["passage_id"], "N")
+        self.assertEqual(end_message[2]["total_captured_frames"], 1)
+        self.assertNotIn("total_frames", end_message[2])
 
     def test_empty_index_emits_end_and_keeps_stream_sequence(self):
         _, _, _, agent, _, _ = self.run_capture(

@@ -2,9 +2,8 @@
 
 O scheduler usa planos compartilhados e deadlines monotonicos absolutos. A
 fonte interna de verdade sao ``FrameEvent``, ``EndPassageEvent`` e
-``EndPipelineEvent``. Enquanto os consumidores PADE ainda sao legados, uma
-ponte converte esses eventos para as ontologies/payloads antigos sem manter um
-segundo relogio ou alterar os deadlines.
+``EndPipelineEvent``. A aresta Capture -> Selection transporta esses contratos
+diretamente; apenas a finalizacao in-process da Prediction permanece legada.
 """
 
 from __future__ import annotations
@@ -42,26 +41,6 @@ from mas.utils.animal_dataset import AnimalDataset
 
 
 PIPELINE_EVENT_ONTOLOGY = "pipeline-event"
-LEGACY_FRAME_ONTOLOGY = "frame-capture"
-LEGACY_END_PASSAGE_ONTOLOGY = "passage-complete"
-
-
-def legacy_payload_from_event(event: FrameEvent | EndPassageEvent) -> dict:
-    """Ponte temporaria dos contratos novos para consumidores PADE antigos."""
-    payload = event_to_dict(event)
-    if isinstance(event, FrameEvent):
-        payload.update({
-            "animal_id": event.passage_id,
-            "frame_index": event.capture_index,
-        })
-    else:
-        payload.update({
-            "animal_id": event.passage_id,
-            "total_frames": event.total_captured_frames,
-            "first_capture": event.first_capture_time,
-            "last_capture": event.last_capture_time,
-        })
-    return payload
 
 
 class DatasetCaptureBehaviour(Behaviour):
@@ -255,7 +234,7 @@ class DatasetCaptureBehaviour(Behaviour):
         # A futura CaptureTimingRecorder do PADE deve registrar a admissao
         # depois que Selection inserir este evento em sua OrderedInbox. O
         # send ACL abaixo, isoladamente, nao prova admissao na primeira borda.
-        self._send_legacy_event(LEGACY_FRAME_ONTOLOGY, event)
+        self._send_pipeline_event(event)
 
         if self.verbose:
             display_message(
@@ -279,7 +258,7 @@ class DatasetCaptureBehaviour(Behaviour):
             first_capture_time=self.first_capture,
             last_capture_time=self.last_capture,
         )
-        self._send_legacy_event(LEGACY_END_PASSAGE_ONTOLOGY, event)
+        self._send_pipeline_event(event)
 
         # Ponte temporaria: Prediction ainda nao consome EndPassageEvent.
         if self.predict_agent is not None:
@@ -306,11 +285,7 @@ class DatasetCaptureBehaviour(Behaviour):
 
     def _finish_pipeline(self) -> None:
         event = EndPipelineEvent(stream_seq=self._sequencer.next_seq())
-        self._send_message(
-            receiver=self.next_agent_aid,
-            ontology=PIPELINE_EVENT_ONTOLOGY,
-            payload=event_to_dict(event),
-        )
+        self._send_pipeline_event(event)
         self._finished = True
         display_message(
             self.agent.aid.name,
@@ -318,20 +293,14 @@ class DatasetCaptureBehaviour(Behaviour):
             f"EndPipeline seq={event.stream_seq}.",
         )
 
-    def _send_legacy_event(
+    def _send_pipeline_event(
         self,
-        ontology: str,
-        event: FrameEvent | EndPassageEvent,
+        event: FrameEvent | EndPassageEvent | EndPipelineEvent,
     ) -> None:
-        receiver = (
-            self.next_agent_aid
-            if isinstance(event, FrameEvent)
-            else self.selection_agent_aid
-        )
         self._send_message(
-            receiver=receiver,
-            ontology=ontology,
-            payload=legacy_payload_from_event(event),
+            receiver=self.next_agent_aid,
+            ontology=PIPELINE_EVENT_ONTOLOGY,
+            payload=event_to_dict(event),
         )
 
     def _send_message(self, *, receiver: str, ontology: str, payload: dict) -> None:
