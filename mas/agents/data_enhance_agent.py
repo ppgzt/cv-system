@@ -8,7 +8,6 @@ processamento nao faz parte da ocupacao, como em ``queue.Queue``.
 
 from __future__ import annotations
 
-import json
 import queue
 from typing import Callable
 
@@ -25,7 +24,6 @@ from domain.pipeline_events import (
     FrameEvent,
     PipelineEvent,
     event_from_json,
-    event_to_dict,
     event_to_json,
 )
 from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
@@ -35,8 +33,6 @@ from mas.infrastructure.stream_sequence import StreamSequencer
 
 
 PIPELINE_EVENT_ONTOLOGY = "pipeline-event"
-LEGACY_FRAME_ONTOLOGY = "frame-enhanced"
-LEGACY_END_PASSAGE_ONTOLOGY = "batch-ready"
 
 
 class DataEnhanceAgent(Agent):
@@ -63,7 +59,6 @@ class DataEnhanceAgent(Agent):
 
         self._processing = False
         self._active_frame_seq: int | None = None
-        self._enhanced_by_passage: dict[str, int] = {}
 
     def react(self, message):
         super().react(message)
@@ -150,19 +145,24 @@ class DataEnhanceAgent(Agent):
             return
 
     def _enhance_succeeded(self, enhanced, event: FrameEvent):
+        emitted = False
         try:
             self.frame_store.put(event.frame_id, enhanced)
-            self._enhanced_by_passage[event.passage_id] = (
-                self._enhanced_by_passage.get(event.passage_id, 0) + 1
-            )
             output_event = self._resequence_frame(event)
             self._emit_pipeline_event(output_event)
-            self._send_legacy_frame(output_event)
+            emitted = True
             display_message(
                 self.aid.name,
                 f"frame_id={event.frame_id} enhanced and forwarded.",
             )
         except Exception as exc:
+            if not emitted:
+                try:
+                    # Sem emissao canonica bem-sucedida, Prediction nunca
+                    # podera consumir esta chave.
+                    self.frame_store.discard(event.frame_id)
+                except Exception:
+                    pass
             self._report_callback_exception("Enhance callback", event, exc)
         finally:
             self._finish_current_frame(event)
@@ -218,11 +218,6 @@ class DataEnhanceAgent(Agent):
         )
         self._emit_pipeline_event(output_event)
 
-        # Bridge temporaria: Prediction ainda usa batch-ready. A contagem e
-        # apenas dos frames efetivamente emitidos antes deste END ordenado.
-        suitable_count = self._enhanced_by_passage.pop(event.passage_id, 0)
-        self._send_legacy_end(output_event, suitable_count)
-
     def _resequence_frame(self, event: FrameEvent) -> FrameEvent:
         return FrameEvent(
             stream_seq=self.output_sequencer.next_seq(),
@@ -240,37 +235,6 @@ class DataEnhanceAgent(Agent):
         message.set_ontology(PIPELINE_EVENT_ONTOLOGY)
         message.add_receiver(AID(self.next_agent_aid))
         message.set_content(event_to_json(event))
-        self.send(message)
-
-    def _send_legacy_frame(self, event: FrameEvent) -> None:
-        payload = event_to_dict(event)
-        payload.update({
-            "animal_id": event.passage_id,
-            "frame_index": event.capture_index,
-        })
-        self._send_legacy_message(LEGACY_FRAME_ONTOLOGY, payload)
-
-    def _send_legacy_end(
-        self,
-        event: EndPassageEvent,
-        suitable_count: int,
-    ) -> None:
-        payload = {
-            "animal_id": event.passage_id,
-            "suitable_count": suitable_count,
-            "total_frames": event.total_captured_frames,
-            "capture_metrics": {
-                "first_image_capture_time": event.first_capture_time,
-                "last_image_capture_time": event.last_capture_time,
-            },
-        }
-        self._send_legacy_message(LEGACY_END_PASSAGE_ONTOLOGY, payload)
-
-    def _send_legacy_message(self, ontology: str, payload: dict) -> None:
-        message = ACLMessage(ACLMessage.INFORM)
-        message.set_ontology(ontology)
-        message.add_receiver(AID(self.next_agent_aid))
-        message.set_content(json.dumps(payload, ensure_ascii=True))
         self.send(message)
 
     def on_start(self):

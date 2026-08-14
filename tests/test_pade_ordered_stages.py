@@ -1,4 +1,3 @@
-import json
 import queue
 import unittest
 from unittest.mock import patch
@@ -297,6 +296,7 @@ class SelectionOrderedStageTests(unittest.TestCase):
         self.assertEqual(finish_calls, ["A", "C"])
         self.assertFalse(selection._processing)
         self.assertIsNone(selection._active_frame_seq)
+        self.assertIsNone(store.get("A"))
 
     def test_errback_cleanup_failure_still_releases_once_and_reaches_end(self):
         store = FrameStore()
@@ -337,6 +337,32 @@ class SelectionOrderedStageTests(unittest.TestCase):
 
 
 class EnhanceOrderedStageTests(unittest.TestCase):
+    def test_send_failure_discards_orphan_and_allows_following_end(self):
+        store = FrameStore()
+        store.put("A", "raw-A")
+        store.put("C", "raw-C")
+        enhance = make_enhance(store)
+        sent = []
+
+        def fail_first_frame_send(message):
+            if message.ontology == "pipeline-event":
+                event = event_from_json(message.content)
+                if isinstance(event, FrameEvent) and event.frame_id == "A":
+                    raise RuntimeError("synthetic send error")
+            sent.append(message)
+
+        enhance.send = fail_first_frame_send
+        for event in (frame(0, "A"), frame(1, "C"), end(2)):
+            enhance.react(acl_event(event))
+
+        self.assertEqual(
+            [getattr(item, "frame_id", "END") for item in pipeline_events(sent)],
+            ["C", "END"],
+        )
+        self.assertIsNone(store.get("A"))
+        self.assertEqual(store.get("C"), "enhanced:raw-C")
+        self.assertFalse(enhance._processing)
+
     def test_slow_transform_and_early_end_cannot_overtake_frames(self):
         store = FrameStore()
         store.put("A", "raw-A")
@@ -366,35 +392,13 @@ class EnhanceOrderedStageTests(unittest.TestCase):
         )
         self.assertEqual(store.get("A"), "enhanced:raw-A")
         self.assertEqual(store.get("B"), "enhanced:raw-B")
-
-        legacy = [
-            json.loads(message.content)
-            for message in enhance.sent_messages
-            if message.ontology == "batch-ready"
-        ]
-        self.assertEqual(legacy[0]["suitable_count"], 2)
-        self.assertEqual(legacy[0]["total_frames"], 2)
-
-        legacy_frames = [
-            json.loads(message.content)
-            for message in enhance.sent_messages
-            if message.ontology == "frame-enhanced"
-        ]
         self.assertEqual(
-            [(item["frame_id"], item["animal_id"], item["frame_index"]) for item in legacy_frames],
-            [("A", "N", 1), ("B", "N", 2)],
-        )
-        batch_index = next(
-            index
-            for index, message in enumerate(enhance.sent_messages)
-            if message.ontology == "batch-ready"
-        )
-        self.assertTrue(
-            all(
-                index < batch_index
-                for index, message in enumerate(enhance.sent_messages)
-                if message.ontology == "frame-enhanced"
-            )
+            {
+                message.ontology
+                for message in enhance.sent_messages
+                if message.ontology is not None
+            },
+            {"pipeline-event"},
         )
 
     def test_enhance_error_skips_frame_and_preserves_following_frame_and_end(self):
@@ -413,12 +417,14 @@ class EnhanceOrderedStageTests(unittest.TestCase):
             ["A", "C", "END"],
         )
         self.assertIsNone(store.get("B"))
-        batch_ready = next(
-            json.loads(message.content)
-            for message in enhance.sent_messages
-            if message.ontology == "batch-ready"
+        self.assertEqual(
+            {
+                message.ontology
+                for message in enhance.sent_messages
+                if message.ontology is not None
+            },
+            {"pipeline-event"},
         )
-        self.assertEqual(batch_ready["suitable_count"], 2)
 
     def test_consecutive_passages_and_end_pipeline_remain_ordered(self):
         store = FrameStore()

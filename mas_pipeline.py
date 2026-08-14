@@ -129,17 +129,18 @@ class MASStrategy:
         inference_adapter = InferenceAdapter(weight_model_path)
 
         # 6. Agents
-        # PredictWeightAgent é criado ANTES do DatasetCaptureAgent porque o
-        # capture notifica o predict IN-PROCESS (termination capture-driven).
         predict_agent = PredictWeightAgent(
             aid=predict_aid,
             inference_adapter=inference_adapter,
             mode=self.mode,
             pid=self.pid,
-            herd_size=len(animal_tags),
             capture_agent_aid=capture_aid.name,
+            frame_store=FRAME_STORE,
             verbose=self.verbose,
             fps=self.fps,
+            capture_mode=(
+                "native-timestamps" if self.native_timestamps else None
+            ),
         )
 
         capture_agent = DatasetCaptureAgent(
@@ -152,7 +153,6 @@ class MASStrategy:
             max_passage_seconds=self.max_passage_seconds,
             native_timestamps=self.native_timestamps,
             wait_for_aids=[selection_aid.name, predict_aid.name],
-            predict_agent=predict_agent,
             frame_store=FRAME_STORE,
             verbose=self.verbose,
         )
@@ -168,7 +168,6 @@ class MASStrategy:
             aid=selection_aid,
             frame_selection_adapter=selection_adapter,
             next_agent_aid=enhance_aid.name,
-            predict_agent_aid=predict_aid.name,
             capture_agent_aid=capture_aid.name,
             frame_store=FRAME_STORE,
             verbose=self.verbose,

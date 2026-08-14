@@ -2,8 +2,8 @@
 
 O scheduler usa planos compartilhados e deadlines monotonicos absolutos. A
 fonte interna de verdade sao ``FrameEvent``, ``EndPassageEvent`` e
-``EndPipelineEvent``. A aresta Capture -> Selection transporta esses contratos
-diretamente; apenas a finalizacao in-process da Prediction permanece legada.
+``EndPipelineEvent``. A aresta Capture -> Selection transporta somente esses
+contratos.
 """
 
 from __future__ import annotations
@@ -58,7 +58,6 @@ class DatasetCaptureBehaviour(Behaviour):
         fps: float | None,
         max_passage_seconds: float | None = None,
         native_timestamps: bool = False,
-        predict_agent=None,
         frame_store: FrameStore = FRAME_STORE,
         verbose: bool = False,
         *,
@@ -78,7 +77,6 @@ class DatasetCaptureBehaviour(Behaviour):
         self.fps = fps
         self.max_passage_seconds = max_passage_seconds
         self.native_timestamps = native_timestamps
-        self.predict_agent = predict_agent
         self.frame_store = frame_store
         self.verbose = verbose
 
@@ -260,15 +258,6 @@ class DatasetCaptureBehaviour(Behaviour):
         )
         self._send_pipeline_event(event)
 
-        # Ponte temporaria: Prediction ainda nao consome EndPassageEvent.
-        if self.predict_agent is not None:
-            self.predict_agent.notify_capture_done(
-                tag,
-                total_frames=event.total_captured_frames,
-                first_capture=event.first_capture_time,
-                last_capture=event.last_capture_time,
-            )
-
         display_message(
             self.agent.aid.name,
             f"[PASSAGE-COMPLETE] Animal {tag}: "
@@ -325,7 +314,6 @@ class DatasetCaptureAgent(Agent):
         max_passage_seconds: float | None = None,
         native_timestamps: bool = False,
         wait_for_aids: list[str] | None = None,
-        predict_agent=None,
         frame_store: FrameStore = FRAME_STORE,
         debug: bool = False,
         verbose: bool = False,
@@ -341,7 +329,6 @@ class DatasetCaptureAgent(Agent):
         self.fps = fps
         self.max_passage_seconds = max_passage_seconds
         self.native_timestamps = native_timestamps
-        self.predict_agent = predict_agent
         self.frame_store = frame_store
         self.verbose = verbose
         self.wait_for_aids = set(wait_for_aids) if wait_for_aids else set()
@@ -359,7 +346,6 @@ class DatasetCaptureAgent(Agent):
             fps=self.fps,
             max_passage_seconds=self.max_passage_seconds,
             native_timestamps=self.native_timestamps,
-            predict_agent=self.predict_agent,
             frame_store=self.frame_store,
             verbose=self.verbose,
         )

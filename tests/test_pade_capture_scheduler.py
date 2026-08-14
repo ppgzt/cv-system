@@ -63,14 +63,6 @@ class FakeDataset:
         return self.images.setdefault((tag, depth_filename), object())
 
 
-class FakePredictAgent:
-    def __init__(self):
-        self.notifications = []
-
-    def notify_capture_done(self, passage_id, **metadata):
-        self.notifications.append((passage_id, metadata))
-
-
 class FakeAgent:
     def __init__(self, scheduler, frame_store):
         self.aid = SimpleNamespace(name="capture@localhost:5003")
@@ -193,7 +185,6 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         store = FrameStore()
         dataset = FakeDataset(indexes, missing=missing)
         agent = FakeAgent(scheduler, store)
-        predict = FakePredictAgent()
         frame_ids = iter(f"frame-{index}" for index in range(1000))
         behaviour = DatasetCaptureBehaviour(
             agent=agent,
@@ -204,7 +195,6 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             fps=fps,
             max_passage_seconds=max_passage_seconds,
             native_timestamps=native_timestamps,
-            predict_agent=predict,
             frame_store=store,
             call_later=scheduler.call_later,
             monotonic=lambda: scheduler.now,
@@ -213,7 +203,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         )
         behaviour.start()
         scheduler.run_all()
-        return scheduler, store, dataset, agent, predict, behaviour
+        return scheduler, store, dataset, agent, behaviour
 
     def test_fixed_fps_end_has_no_extra_tick_for_multiple_nonmultiple_and_one_fps(self):
         cases = [
@@ -223,7 +213,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         ]
         for duration_s, fps, expected_end_s in cases:
             with self.subTest(duration_s=duration_s, fps=fps):
-                _, _, _, agent, _, _ = self.run_capture(
+                _, _, _, agent, _ = self.run_capture(
                     {"N": make_index([0.0, duration_s * 1000.0])},
                     fps=fps,
                 )
@@ -281,7 +271,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertAlmostEqual(end_at, 1.2)
 
     def test_original_timing_preserves_unique_timestamps_and_cap(self):
-        _, _, dataset, agent, _, _ = self.run_capture(
+        _, _, dataset, agent, _ = self.run_capture(
             {"N": make_index([100.0, 450.0, 900.0])},
             fps=None,
             native_timestamps=True,
@@ -310,7 +300,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertAlmostEqual(end_at, 0.6)
 
     def test_sequence_crosses_passages_and_next_starts_without_ack(self):
-        _, _, _, agent, predict, _ = self.run_capture(
+        _, _, _, agent, behaviour = self.run_capture(
             {
                 "N": make_index([0.0, 500.0]),
                 "N+1": make_index([0.0, 500.0]),
@@ -340,10 +330,10 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             summary[first_end_index + 1][4],
         )
         self.assertEqual(summary[-1][1], "end_pipeline")
-        self.assertEqual([item[0] for item in predict.notifications], ["N", "N+1"])
+        self.assertFalse(hasattr(behaviour, "predict_agent"))
 
     def test_capture_emits_canonical_pipeline_events(self):
-        _, _, _, agent, _, _ = self.run_capture(
+        _, _, _, agent, _ = self.run_capture(
             {"N": make_index([0.0])},
             fps=1.0,
         )
@@ -369,7 +359,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertNotIn("total_frames", end_message[2])
 
     def test_empty_index_emits_end_and_keeps_stream_sequence(self):
-        _, _, _, agent, _, _ = self.run_capture(
+        _, _, _, agent, _ = self.run_capture(
             {"empty": [], "N": make_index([0.0])},
             fps=1.0,
         )
@@ -382,7 +372,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertEqual(records[0]["total_captured_frames"], 0)
 
     def test_frame_is_stored_before_message_without_duplicate_array(self):
-        _, store, dataset, agent, _, _ = self.run_capture(
+        _, store, dataset, agent, _ = self.run_capture(
             {"N": make_index([0.0])},
             fps=1.0,
         )
@@ -399,7 +389,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         )
 
     def test_missing_depth_skips_frame_but_still_emits_end(self):
-        _, store, _, agent, _, _ = self.run_capture(
+        _, store, _, agent, _ = self.run_capture(
             {"N": make_index([0.0, 1000.0])},
             fps=1.0,
             missing={("N", "depth-0.png")},

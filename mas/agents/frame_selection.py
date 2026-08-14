@@ -57,7 +57,8 @@ class FrameSelectionAgent(Agent):
         super().__init__(aid=aid, debug=debug)
         self.frame_selection_adapter = frame_selection_adapter
         self.next_agent_aid = next_agent_aid
-        # Compatibilidade de construcao: batch-ready agora sai do Enhance.
+        # Compatibilidade de construcao do launcher historico. Selection nao
+        # possui mais aresta nem protocolo de finalizacao direto com Prediction.
         self.predict_agent_aid = predict_agent_aid
         self.capture_agent_aid = capture_agent_aid
         self.frame_store = frame_store
@@ -196,7 +197,12 @@ class FrameSelectionAgent(Agent):
             self.suitable_frames[event.passage_id] = (
                 self.suitable_frames.get(event.passage_id, 0) + 1
             )
-            self._emit_event(self._resequence_frame(event))
+            try:
+                self._emit_event(self._resequence_frame(event))
+            except Exception:
+                # O downstream nao recebeu o evento; nao deixe raw orfao.
+                self.frame_store.discard(event.frame_id)
+                raise
             action = "SUITABLE"
         else:
             self.discarded += 1
