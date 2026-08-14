@@ -34,6 +34,11 @@ from datetime import datetime
 
 import numpy as np
 
+from domain.helpers.capture_schedule import (
+    build_fixed_fps_schedule,
+    nearest_index,
+)
+
 
 # Sentinel de fim de animal: (END_ANIMAL, tag, total_frames, first_capture, last_capture)
 _END_ANIMAL = "END_ANIMAL"
@@ -55,6 +60,7 @@ class ThreadPipeline:
         data_root: str = "data/exp1",
         verbose: bool = False,
         native_timestamps: bool = False,
+        capture_timing_enabled: bool = True,
     ):
         self.pid = pid
         self.mode = mode
@@ -64,6 +70,7 @@ class ThreadPipeline:
         self.data_root = data_root
         self.native_timestamps = native_timestamps
         self.verbose = verbose
+        self.capture_timing_enabled = capture_timing_enabled
 
         if not self.native_timestamps and (self.fps is None or self.fps <= 0):
             raise ValueError("fps deve ser maior que zero no modo normal")
@@ -80,26 +87,29 @@ class ThreadPipeline:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _nearest_index(times: np.ndarray, value: float) -> int:
-        j = int(np.searchsorted(times, value))
-        if j <= 0:
-            return 0
-        if j >= len(times):
-            return len(times) - 1
-        if abs(times[j - 1] - value) <= abs(times[j] - value):
-            return j - 1
-        return j
+        return nearest_index(times, value)
 
-    def _capture_loop(self, dataset, animal_tags, q1, telemetry_context=None):
+    def _capture_loop(
+        self,
+        dataset,
+        animal_tags,
+        q1,
+        telemetry_context=None,
+        capture_timing_recorder=None,
+    ):
         # O caminho original permanece intacto. O modo nativo usa um produtor
         # alternativo, mas mantém as mesmas quatro threads do pipeline e as
         # mesmas filas/sentinelas downstream.
         if self.native_timestamps:
             self._capture_loop_native(
-                dataset, animal_tags, q1, telemetry_context=telemetry_context
+                dataset,
+                animal_tags,
+                q1,
+                telemetry_context=telemetry_context,
+                capture_timing_recorder=capture_timing_recorder,
             )
             return
 
-        step_ms = 1000.0 / self.fps
         period = 1.0 / self.fps
 
         for tag_idx, tag in enumerate(animal_tags):
@@ -112,8 +122,8 @@ class ThreadPipeline:
             times = np.array([x["relative_time_ms"] for x in index], dtype=float)
             frames = index
 
-            virtual_clock = float(times[0])
             end_ms = self._passage_end_ms(times)
+            capture_schedule = build_fixed_fps_schedule(times, self.fps, end_ms)
             span_s = (times[-1] - times[0]) / 1000.0
             if span_s > self.ANOMALY_SPAN_SECONDS:
                 self._log("capture_agent",
@@ -135,8 +145,10 @@ class ThreadPipeline:
                 passage_start + (end_ms - float(times[0])) / 1000.0
             )
             next_tick = passage_start
-            while virtual_clock <= end_ms:
-                j = self._nearest_index(times, virtual_clock)
+            for schedule_idx, capture_event in enumerate(capture_schedule):
+                virtual_clock = capture_event.scheduled_capture_time_ms
+                scheduled_monotonic_ns = round(next_tick * 1_000_000_000)
+                j = capture_event.source_index
                 frame = frames[j]
                 img = dataset.load_depth(tag, frame["depth_filename"])
                 if img is not None:
@@ -156,16 +168,31 @@ class ThreadPipeline:
                         "img": img,
                     }
                     q1.put(payload)
+                    if capture_timing_recorder is not None:
+                        actual_enqueue_monotonic_ns = time.monotonic_ns()
+                        capture_timing_recorder.record(
+                            passage_id=tag,
+                            capture_index=captured_count,
+                            frame_id=payload["frame_id"],
+                            source_filename=frame.get("depth_filename"),
+                            source_relative_time_ms=float(frame["relative_time_ms"]),
+                            scheduled_capture_time_ms=virtual_clock,
+                            scheduled_monotonic_ns=scheduled_monotonic_ns,
+                            actual_enqueue_monotonic_ns=(
+                                actual_enqueue_monotonic_ns
+                            ),
+                        )
 
                     if self.verbose:
                         self._log("capture_agent",
                                   f"[CAPTURE] animal={tag} idx={captured_count} "
                                   f"t={virtual_clock:.1f}ms label={frame.get('label')}")
 
-                virtual_clock += step_ms
                 next_tick += period
                 next_deadline = (
-                    next_tick if virtual_clock <= end_ms else passage_end_deadline
+                    next_tick
+                    if schedule_idx + 1 < len(capture_schedule)
+                    else passage_end_deadline
                 )
                 sleep_for = next_deadline - time.monotonic()
                 if sleep_for > 0:
@@ -183,7 +210,12 @@ class ThreadPipeline:
                   f"[FINISH] Captura concluída para {len(animal_tags)} animais.")
 
     def _capture_loop_native(
-        self, dataset, animal_tags, q1, telemetry_context=None
+        self,
+        dataset,
+        animal_tags,
+        q1,
+        telemetry_context=None,
+        capture_timing_recorder=None,
     ):
         """Reproduz cada timestamp do dataset uma única vez.
 
@@ -232,6 +264,7 @@ class ThreadPipeline:
                     break
 
                 deadline = replay_start + (frame_time - first_dataset_ms) / 1000.0
+                scheduled_monotonic_ns = round(deadline * 1_000_000_000)
                 sleep_for = deadline - time.monotonic()
                 if sleep_for > 0:
                     time.sleep(sleep_for)
@@ -263,6 +296,18 @@ class ThreadPipeline:
                     "img": img,
                 }
                 q1.put(payload)
+                if capture_timing_recorder is not None:
+                    actual_enqueue_monotonic_ns = time.monotonic_ns()
+                    capture_timing_recorder.record(
+                        passage_id=tag,
+                        capture_index=captured_count,
+                        frame_id=payload["frame_id"],
+                        source_filename=frame.get("depth_filename"),
+                        source_relative_time_ms=frame_time,
+                        scheduled_capture_time_ms=frame_time,
+                        scheduled_monotonic_ns=scheduled_monotonic_ns,
+                        actual_enqueue_monotonic_ns=actual_enqueue_monotonic_ns,
+                    )
 
                 if self.verbose:
                     self._log(
@@ -549,6 +594,7 @@ class ThreadPipeline:
         from mas.utils.ram_monitor import RAMMonitor
         from mas.utils.temp_monitor import TempMonitor
         from infra.profiling.telemetry import (
+            CaptureTimingRecorder,
             HardwareTelemetryMonitor,
             QueueTelemetryMonitor,
             TelemetryContext,
@@ -621,6 +667,11 @@ class ThreadPipeline:
         hardware_telemetry_monitor = HardwareTelemetryMonitor(
             telemetry_context, reports_dir="infra/reports"
         )
+        capture_timing_recorder = (
+            CaptureTimingRecorder(telemetry_context, reports_dir="infra/reports")
+            if self.capture_timing_enabled
+            else None
+        )
         telemetry_monitors = (
             queue_telemetry_monitor,
             hardware_telemetry_monitor,
@@ -628,7 +679,13 @@ class ThreadPipeline:
 
         capture_t = threading.Thread(
             target=self._capture_loop,
-            args=(dataset, animal_tags, q1, telemetry_context),
+            args=(
+                dataset,
+                animal_tags,
+                q1,
+                telemetry_context,
+                capture_timing_recorder,
+            ),
             name="capture", daemon=True)
         select_t = threading.Thread(
             target=self._select_loop, args=(selection_adapter, q1, q2),
@@ -683,4 +740,18 @@ class ThreadPipeline:
                         "ThreadPipeline",
                         f"[WARN] {monitor.name} não persistiu CSV: "
                         f"{monitor.persist_error}",
+                    )
+
+            if capture_timing_recorder is not None:
+                if not capture_timing_recorder.persist():
+                    self._log(
+                        "ThreadPipeline",
+                        "[WARN] CaptureTimingRecorder não persistiu CSV: "
+                        f"{capture_timing_recorder.persist_error}",
+                    )
+                if capture_timing_recorder.dropped_events:
+                    self._log(
+                        "ThreadPipeline",
+                        "[WARN] CaptureTimingRecorder descartou "
+                        f"{capture_timing_recorder.dropped_events} eventos",
                     )

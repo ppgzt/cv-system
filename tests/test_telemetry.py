@@ -8,8 +8,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from infra.profiling.telemetry import (
+    CAPTURE_TIMING_HEADER,
     HARDWARE_TELEMETRY_HEADER,
     QUEUE_TELEMETRY_HEADER,
+    CaptureTimingRecorder,
     HardwareTelemetryMonitor,
     QueueTelemetryMonitor,
     TelemetryContext,
@@ -150,6 +152,33 @@ class VcgencmdParsingTests(unittest.TestCase):
 
 
 class TelemetryMonitorTests(unittest.TestCase):
+    def test_capture_timing_csv_header_and_nullable_values(self):
+        with tempfile.TemporaryDirectory() as reports_dir:
+            context = TelemetryContext(
+                "capture-run", "original_timing", None, monotonic_origin_ns=100
+            )
+            recorder = CaptureTimingRecorder(context, reports_dir=reports_dir)
+            self.assertTrue(recorder.record(
+                passage_id="N",
+                capture_index=1,
+                frame_id="frame",
+                source_filename="source.png",
+                source_relative_time_ms=20.0,
+                scheduled_capture_time_ms=20.0,
+                scheduled_monotonic_ns=200,
+                actual_enqueue_monotonic_ns=250,
+            ))
+            self.assertTrue(recorder.persist())
+
+            csv_path = Path(reports_dir) / "capture-run" / "capture_timing.csv"
+            with csv_path.open(newline="") as file:
+                reader = csv.DictReader(file)
+                self.assertEqual(reader.fieldnames, CAPTURE_TIMING_HEADER)
+                row = next(reader)
+            self.assertEqual(row["capture_fps"], "")
+            self.assertEqual(row["source_filename"], "source.png")
+            self.assertEqual(row["actual_enqueue_monotonic_ns"], "250")
+
     def test_queue_monitor_records_without_consuming_or_reordering(self):
         q1 = queue.Queue()
         q2 = queue.Queue()

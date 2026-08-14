@@ -1,8 +1,10 @@
 import queue
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-from infra.profiling.telemetry import TelemetryContext
+from infra.profiling.telemetry import CaptureTimingRecorder, TelemetryContext
 from mas.utils.report_collector import ReportCollector
 from thread_pipeline import ThreadPipeline, _END_ANIMAL
 
@@ -14,6 +16,9 @@ class FakeClock:
 
     def monotonic(self):
         return self.now
+
+    def monotonic_ns(self):
+        return round(self.now * 1_000_000_000)
 
     def sleep(self, seconds):
         if seconds < 0:
@@ -29,6 +34,27 @@ class RecordingQueue:
 
     def put(self, item):
         self.events.append((self.clock.monotonic(), item))
+
+
+class AdvancingRecordingQueue(RecordingQueue):
+    """Simula um put com duração observável para testar a ordem do timestamp."""
+
+    def put(self, item):
+        if isinstance(item, dict):
+            self.clock.now += 0.001
+        super().put(item)
+
+
+class OrderCheckingRecorder:
+    def __init__(self, output):
+        self.output = output
+        self.records = []
+
+    def record(self, **record):
+        if not self.output.events or not isinstance(self.output.events[-1][1], dict):
+            raise AssertionError("capture timing foi registrado antes do q1.put(frame)")
+        self.records.append(record)
+        return True
 
 
 class FakeDataset:
@@ -254,6 +280,115 @@ class PassageTimingTests(unittest.TestCase):
         pipeline._save_metrics.assert_called_once_with(metrics)
         self.assertEqual(metrics["animals"]["N"]["total_of_images"], 1)
         self.assertEqual(metrics["animals"]["N"]["suitable_images"], 0)
+
+    def test_fixed_fps_records_each_frame_after_enqueue_but_not_end(self):
+        clock = FakeClock()
+        output = AdvancingRecordingQueue(clock)
+        recorder = OrderCheckingRecorder(output)
+        dataset = FakeDataset({"N": make_index([0, 400, 1000])})
+
+        with (
+            patch("thread_pipeline.time.monotonic", side_effect=clock.monotonic),
+            patch("thread_pipeline.time.monotonic_ns", side_effect=clock.monotonic_ns),
+            patch("thread_pipeline.time.sleep", side_effect=clock.sleep),
+        ):
+            self._pipeline(2.0)._capture_loop(
+                dataset, ["N"], output, capture_timing_recorder=recorder
+            )
+
+        self.assertEqual(len(recorder.records), len(self._frames(output.events)))
+        self.assertEqual(len(recorder.records), 3)
+        self.assertEqual(
+            [record["source_relative_time_ms"] for record in recorder.records],
+            [0.0, 400.0, 1000.0],
+        )
+        self.assertEqual(
+            [record["scheduled_capture_time_ms"] for record in recorder.records],
+            [0.0, 500.0, 1000.0],
+        )
+        for record in recorder.records:
+            self.assertGreaterEqual(
+                record["actual_enqueue_monotonic_ns"],
+                record["scheduled_monotonic_ns"],
+            )
+        frame_events = self._frames(output.events)
+        self.assertEqual(
+            [record["actual_enqueue_monotonic_ns"] for record in recorder.records],
+            [round(timestamp * 1_000_000_000) for timestamp, _ in frame_events],
+        )
+
+    def test_original_timing_records_original_deadlines(self):
+        clock = FakeClock()
+        output = RecordingQueue(clock)
+        recorder = OrderCheckingRecorder(output)
+        dataset = FakeDataset({"N": make_index([0, 300, 900])})
+
+        with (
+            patch("thread_pipeline.time.monotonic", side_effect=clock.monotonic),
+            patch("thread_pipeline.time.monotonic_ns", side_effect=clock.monotonic_ns),
+            patch("thread_pipeline.time.sleep", side_effect=clock.sleep),
+        ):
+            self._pipeline(None, native=True)._capture_loop(
+                dataset, ["N"], output, capture_timing_recorder=recorder
+            )
+
+        self.assertEqual(
+            [record["source_relative_time_ms"] for record in recorder.records],
+            [0.0, 300.0, 900.0],
+        )
+        self.assertEqual(
+            [record["scheduled_capture_time_ms"] for record in recorder.records],
+            [0.0, 300.0, 900.0],
+        )
+
+    def test_disabled_capture_timing_does_not_read_extra_clock(self):
+        clock = FakeClock()
+        output = RecordingQueue(clock)
+        dataset = FakeDataset({"N": make_index([0, 1000])})
+
+        with (
+            patch("thread_pipeline.time.monotonic", side_effect=clock.monotonic),
+            patch(
+                "thread_pipeline.time.monotonic_ns",
+                side_effect=AssertionError("monotonic_ns não deveria ser lido"),
+            ),
+            patch("thread_pipeline.time.sleep", side_effect=clock.sleep),
+        ):
+            self._pipeline(1.0)._capture_loop(dataset, ["N"], output)
+
+        self.assertEqual(len(self._frames(output.events)), 2)
+        self.assertEqual(len(self._ends(output.events)), 1)
+
+    def test_capture_timing_recorder_uses_common_origin_and_save_failure_is_safe(self):
+        context = TelemetryContext(
+            "run", "fixed_fps", 5.0, monotonic_origin_ns=1_000_000_000
+        )
+        with self.subTest("common monotonic origin"):
+            recorder = CaptureTimingRecorder(context)
+            self.assertTrue(recorder.record(
+                passage_id="N",
+                capture_index=1,
+                frame_id="frame",
+                source_filename="source.png",
+                source_relative_time_ms=10.0,
+                scheduled_capture_time_ms=0.0,
+                scheduled_monotonic_ns=1_100_000_000,
+                actual_enqueue_monotonic_ns=1_125_000_000,
+            ))
+            row = recorder.get_all_data()[0]
+            self.assertEqual(row["run_id"], "run")
+            self.assertEqual(row["condition"], "fixed_fps")
+            self.assertEqual(row["capture_fps"], 5.0)
+            self.assertAlmostEqual(row["scheduled_elapsed_s"], 0.1)
+            self.assertAlmostEqual(row["actual_enqueue_elapsed_s"], 0.125)
+            self.assertAlmostEqual(row["lateness_ms"], 25.0)
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            invalid_root = Path(temporary_dir) / "not-a-directory"
+            invalid_root.write_text("file")
+            recorder = CaptureTimingRecorder(context, reports_dir=invalid_root)
+            self.assertFalse(recorder.persist())
+            self.assertIsNotNone(recorder.persist_error)
 
 
 if __name__ == "__main__":

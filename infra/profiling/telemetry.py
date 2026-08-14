@@ -58,6 +58,26 @@ HARDWARE_TELEMETRY_HEADER = [
     "throttling_command_available",
 ]
 
+CAPTURE_TIMING_HEADER = [
+    "timestamp",
+    "monotonic_ns",
+    "elapsed_s",
+    "run_id",
+    "condition",
+    "capture_fps",
+    "passage_id",
+    "capture_index",
+    "frame_id",
+    "source_filename",
+    "source_relative_time_ms",
+    "scheduled_capture_time_ms",
+    "scheduled_monotonic_ns",
+    "scheduled_elapsed_s",
+    "actual_enqueue_monotonic_ns",
+    "actual_enqueue_elapsed_s",
+    "lateness_ms",
+]
+
 _THROTTLING_FLAG_NAMES = [
     "undervoltage_current",
     "arm_frequency_capped_current",
@@ -122,6 +142,89 @@ class TelemetryContext:
                 monotonic_ns - self.monotonic_origin_ns
             ) / 1_000_000_000.0,
         }
+
+
+class CaptureTimingRecorder:
+    """Recorder em memória do timing realizado de admissão de frames."""
+
+    def __init__(
+        self,
+        context: TelemetryContext,
+        reports_dir: str | Path = "infra/reports",
+    ):
+        self.context = context
+        self.reports_dir = Path(reports_dir)
+        self._rows: list[dict] = []
+        self._lock = threading.Lock()
+        self.persist_error: OSError | None = None
+        self.dropped_events = 0
+
+    def record(
+        self,
+        *,
+        passage_id: str,
+        capture_index: int,
+        frame_id: str,
+        source_filename: str,
+        source_relative_time_ms: float,
+        scheduled_capture_time_ms: float,
+        scheduled_monotonic_ns: int,
+        actual_enqueue_monotonic_ns: int,
+    ) -> bool:
+        """Registra um FRAME já enfileirado; nunca registra sentinelas."""
+        try:
+            metadata = self.context.sample_metadata(actual_enqueue_monotonic_ns)
+            scheduled_elapsed_s = (
+                scheduled_monotonic_ns - self.context.monotonic_origin_ns
+            ) / 1_000_000_000.0
+            actual_elapsed_s = metadata["elapsed_s"]
+            row = {
+                "timestamp": datetime.now().isoformat(),
+                "monotonic_ns": actual_enqueue_monotonic_ns,
+                "elapsed_s": actual_elapsed_s,
+                "run_id": metadata["run_id"],
+                "condition": metadata["condition"],
+                "capture_fps": metadata["capture_fps"],
+                "passage_id": passage_id,
+                "capture_index": capture_index,
+                "frame_id": frame_id,
+                "source_filename": source_filename,
+                "source_relative_time_ms": source_relative_time_ms,
+                "scheduled_capture_time_ms": scheduled_capture_time_ms,
+                "scheduled_monotonic_ns": scheduled_monotonic_ns,
+                "scheduled_elapsed_s": scheduled_elapsed_s,
+                "actual_enqueue_monotonic_ns": actual_enqueue_monotonic_ns,
+                "actual_enqueue_elapsed_s": actual_elapsed_s,
+                "lateness_ms": (
+                    actual_enqueue_monotonic_ns - scheduled_monotonic_ns
+                ) / 1_000_000.0,
+            }
+            with self._lock:
+                self._rows.append(row)
+            return True
+        except Exception:
+            with self._lock:
+                self.dropped_events += 1
+            return False
+
+    def get_all_data(self) -> list[dict]:
+        with self._lock:
+            return [dict(row) for row in self._rows]
+
+    def persist(self) -> bool:
+        with self._lock:
+            rows = [dict(row) for row in self._rows]
+        try:
+            output_dir = self.reports_dir / self.context.run_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+            with open(output_dir / "capture_timing.csv", mode="w", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=CAPTURE_TIMING_HEADER)
+                writer.writeheader()
+                writer.writerows(rows)
+            return True
+        except OSError as exc:
+            self.persist_error = exc
+            return False
 
 
 def parse_arm_clock(raw: str | None) -> int | None:
