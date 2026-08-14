@@ -89,18 +89,23 @@ class ThreadPipeline:
             return j - 1
         return j
 
-    def _capture_loop(self, dataset, animal_tags, q1):
+    def _capture_loop(self, dataset, animal_tags, q1, telemetry_context=None):
         # O caminho original permanece intacto. O modo nativo usa um produtor
         # alternativo, mas mantém as mesmas quatro threads do pipeline e as
         # mesmas filas/sentinelas downstream.
         if self.native_timestamps:
-            self._capture_loop_native(dataset, animal_tags, q1)
+            self._capture_loop_native(
+                dataset, animal_tags, q1, telemetry_context=telemetry_context
+            )
             return
 
         step_ms = 1000.0 / self.fps
         period = 1.0 / self.fps
 
         for tag_idx, tag in enumerate(animal_tags):
+            if telemetry_context is not None:
+                telemetry_context.set_capture_passage_id(tag)
+
             # Pré-carrega o simulation_index.json do animal
             index = dataset.load_index(tag)
             index.sort(key=lambda x: x["relative_time_ms"])
@@ -168,6 +173,8 @@ class ThreadPipeline:
 
             # Fim da passagem do animal
             q1.put((_END_ANIMAL, tag, captured_count, first_capture, last_capture))
+            if telemetry_context is not None:
+                telemetry_context.clear_capture_passage_id(tag)
             self._log("capture_agent",
                       f"[PASSAGE-COMPLETE] Animal {tag}: {captured_count} frames capturados.")
 
@@ -175,7 +182,9 @@ class ThreadPipeline:
         self._log("capture_agent",
                   f"[FINISH] Captura concluída para {len(animal_tags)} animais.")
 
-    def _capture_loop_native(self, dataset, animal_tags, q1):
+    def _capture_loop_native(
+        self, dataset, animal_tags, q1, telemetry_context=None
+    ):
         """Reproduz cada timestamp do dataset uma única vez.
 
         Existe somente um produtor, como no modo FPS. Os deadlines são
@@ -185,6 +194,9 @@ class ThreadPipeline:
         atual e o produtor recupera o atraso naturalmente.
         """
         for tag_idx, tag in enumerate(animal_tags):
+            if telemetry_context is not None:
+                telemetry_context.set_capture_passage_id(tag)
+
             index = dataset.load_index(tag)
             index.sort(key=lambda x: x["relative_time_ms"])
             times = np.array([x["relative_time_ms"] for x in index], dtype=float)
@@ -194,6 +206,8 @@ class ThreadPipeline:
                 self._log("capture_agent",
                           f"[WARN] Animal {tag} possui simulation_index vazio.")
                 q1.put((_END_ANIMAL, tag, 0, None, None))
+                if telemetry_context is not None:
+                    telemetry_context.clear_capture_passage_id(tag)
                 continue
 
             first_dataset_ms = float(times[0])
@@ -267,6 +281,8 @@ class ThreadPipeline:
                 time.sleep(sleep_for)
 
             q1.put((_END_ANIMAL, tag, captured_count, first_capture, last_capture))
+            if telemetry_context is not None:
+                telemetry_context.clear_capture_passage_id(tag)
             self._log(
                 "capture_agent",
                 f"[PASSAGE-COMPLETE] Animal {tag}: "
@@ -521,6 +537,8 @@ class ThreadPipeline:
     # ------------------------------------------------------------------ #
     def run(self):
         """Sobe o pipeline de threads e bloqueia até o rebanho ser finalizado."""
+        run_monotonic_origin_ns = time.monotonic_ns()
+
         from dotenv import load_dotenv
         load_dotenv(override=True)
 
@@ -530,6 +548,11 @@ class ThreadPipeline:
         from mas.utils.cpu_monitor import CPUMonitor
         from mas.utils.ram_monitor import RAMMonitor
         from mas.utils.temp_monitor import TempMonitor
+        from infra.profiling.telemetry import (
+            HardwareTelemetryMonitor,
+            QueueTelemetryMonitor,
+            TelemetryContext,
+        )
         from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
         from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
         from mas.adapters.inference_adapter import InferenceAdapter
@@ -582,8 +605,30 @@ class ThreadPipeline:
         q2 = queue.Queue()  # select -> enhance
         q3 = queue.Queue()  # enhance -> predict
 
+        # Metadados definidos pelo chamador; a camada de telemetria apenas os
+        # registra e não interpreta políticas ou modos de captura.
+        condition = "original_timing" if self.native_timestamps else "fixed_fps"
+        capture_fps = None if self.native_timestamps else self.fps
+        telemetry_context = TelemetryContext(
+            run_id=self.pid,
+            condition=condition,
+            capture_fps=capture_fps,
+            monotonic_origin_ns=run_monotonic_origin_ns,
+        )
+        queue_telemetry_monitor = QueueTelemetryMonitor(
+            telemetry_context, q1, q2, q3, reports_dir="infra/reports"
+        )
+        hardware_telemetry_monitor = HardwareTelemetryMonitor(
+            telemetry_context, reports_dir="infra/reports"
+        )
+        telemetry_monitors = (
+            queue_telemetry_monitor,
+            hardware_telemetry_monitor,
+        )
+
         capture_t = threading.Thread(
-            target=self._capture_loop, args=(dataset, animal_tags, q1),
+            target=self._capture_loop,
+            args=(dataset, animal_tags, q1, telemetry_context),
             name="capture", daemon=True)
         select_t = threading.Thread(
             target=self._select_loop, args=(selection_adapter, q1, q2),
@@ -602,6 +647,8 @@ class ThreadPipeline:
         cpu_monitor.start()
         ram_monitor.start()
         temp_monitor.start()
+        for monitor in telemetry_monitors:
+            monitor.start()
 
         capture_t.start()
         select_t.start()
@@ -611,6 +658,11 @@ class ThreadPipeline:
         try:
             predict_t.join()
         finally:
+            # Interrompe primeiro os samplers novos, sem participar do lifecycle
+            # operacional das passagens ou dos workers.
+            for monitor in telemetry_monitors:
+                monitor.stop()
+
             # Garante a escrita dos CSVs mesmo com exceção/Ctrl-C
             for m in (cpu_monitor, ram_monitor, temp_monitor):
                 try:
@@ -618,3 +670,17 @@ class ThreadPipeline:
                     m.join()
                 except Exception as e:
                     self._log("ThreadPipeline", f"[WARN] monitor stop falhou: {e}")
+
+            for monitor in telemetry_monitors:
+                monitor.join(timeout=3.0)
+                if monitor.is_alive():
+                    self._log(
+                        "ThreadPipeline",
+                        f"[WARN] {monitor.name} não encerrou dentro do timeout",
+                    )
+                elif monitor.persist_error is not None:
+                    self._log(
+                        "ThreadPipeline",
+                        f"[WARN] {monitor.name} não persistiu CSV: "
+                        f"{monitor.persist_error}",
+                    )

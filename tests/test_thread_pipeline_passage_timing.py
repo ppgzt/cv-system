@@ -2,6 +2,7 @@ import queue
 import unittest
 from unittest.mock import Mock, patch
 
+from infra.profiling.telemetry import TelemetryContext
 from mas.utils.report_collector import ReportCollector
 from thread_pipeline import ThreadPipeline, _END_ANIMAL
 
@@ -181,6 +182,42 @@ class PassageTimingTests(unittest.TestCase):
             if item["animal_id"] == "N+1"
         )
         self.assertAlmostEqual(first_n1_time, end_n_time)
+
+    def test_capture_passage_context_is_active_through_end_enqueue_only(self):
+        clock = FakeClock()
+        context = TelemetryContext(
+            "run", "opaque-condition", 1.0, monotonic_origin_ns=0
+        )
+
+        class ContextRecordingQueue:
+            def __init__(self):
+                self.events = []
+
+            def put(self, item):
+                metadata = context.sample_metadata(int(clock.now * 1_000_000_000))
+                self.events.append((item, metadata["capture_passage_id"]))
+
+        output = ContextRecordingQueue()
+        dataset = FakeDataset({"N": make_index([0, 1000])})
+        with (
+            patch("thread_pipeline.time.monotonic", side_effect=clock.monotonic),
+            patch("thread_pipeline.time.sleep", side_effect=clock.sleep),
+        ):
+            self._pipeline(1.0)._capture_loop(
+                dataset, ["N"], output, telemetry_context=context
+            )
+
+        frame_contexts = [
+            passage_id for item, passage_id in output.events
+            if isinstance(item, dict)
+        ]
+        end_context = next(
+            passage_id for item, passage_id in output.events
+            if isinstance(item, tuple) and item[0] == _END_ANIMAL
+        )
+        self.assertEqual(frame_contexts, ["N", "N"])
+        self.assertEqual(end_context, "N")
+        self.assertIsNone(context.sample_metadata(1_000_000_000)["capture_passage_id"])
 
     def test_rejected_last_frame_still_finalizes_downstream(self):
         pipeline = self._pipeline(1.0)
