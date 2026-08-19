@@ -71,6 +71,53 @@ def build_parser() -> argparse.ArgumentParser:
                    help="engine de orquestração: 'thread' (padrão) ou 'pade'")
     p.add_argument("--native-timestamps", action="store_true",
                    help="segue os timestamps originais do dataset")
+    p.add_argument(
+        "--visual-event",
+        action="store_true",
+        help="habilita o ramo observacional MAD do PADE",
+    )
+    p.add_argument(
+        "--visual-mad-threshold",
+        type=float,
+        default=None,
+        help="threshold MAD (default: 15.0 se low-fps estiver ativo)",
+    )
+    p.add_argument(
+        "--visual-idle-patience",
+        type=int,
+        default=None,
+        help="observações sem movimento para IDLE (default: 2 se low-fps estiver ativo)",
+    )
+    p.add_argument(
+        "--low-fps",
+        type=float,
+        default=None,
+        help="taxa de amostragem em modo LOW no modo adaptativo (ex: 4 ou 5 fps)",
+    )
+    p.add_argument(
+        "--medium-fps",
+        type=float,
+        default=None,
+        help="taxa intermediária (reservado para extensão futura)",
+    )
+    p.add_argument(
+        "--visual-gated",
+        action="store_true",
+        default=False,
+        help="habilita gating no ramo pesado em modo LOW (Visual-Gated)",
+    )
+    p.add_argument(
+        "--no-visual-gated",
+        dest="visual_gated",
+        action="store_false",
+        help="desabilita gating no ramo pesado em modo LOW (Visual-Adaptive)",
+    )
+    p.add_argument(
+        "--selection-hold-n",
+        type=int,
+        default=2,
+        help="janela de rejeições consecutivas do Selection Hold (default: 2)",
+    )
     return p
 
 
@@ -94,11 +141,27 @@ def main():
         else args.max_passage_seconds
     )
 
-    if not args.native_timestamps:
+    if not args.native_timestamps and args.low_fps is None:
         if args.fps is None:
             parser.error("fps é obrigatório no modo normal")
         if args.fps <= 0:
             parser.error("fps deve ser maior que zero")
+
+    visual_event_enabled = args.visual_event or (args.low_fps is not None)
+    visual_mad_threshold = args.visual_mad_threshold
+    visual_idle_patience = args.visual_idle_patience
+
+    if visual_event_enabled:
+        if args.engine != "pade":
+            parser.error("Modo adaptativo / --visual-event está disponível somente no engine pade")
+        if visual_mad_threshold is None:
+            visual_mad_threshold = 15.0
+        if visual_mad_threshold < 0:
+            parser.error("--visual-mad-threshold deve ser não negativo")
+        if visual_idle_patience is None:
+            visual_idle_patience = 2
+        if visual_idle_patience <= 0:
+            parser.error("--visual-idle-patience deve ser maior que zero")
 
     if "batch" in args.mode:
         mode = "batch"
@@ -119,9 +182,9 @@ def main():
         from mas.utils.debug_log import enable_debug_log
         log_file = enable_debug_log(f"{reports_dir}/debug.log")
         print(f"[DEBUG] log verbose sendo gravado em {reports_dir}/debug.log")
-        print(f"[DEBUG] mode={mode} fps={args.fps} num_animals={num_animals} "
+        print(f"[DEBUG] mode={mode} fps={args.fps} low_fps={args.low_fps} num_animals={num_animals} "
               f"max_passage_seconds={max_passage_seconds} engine={args.engine} "
-              f"native_timestamps={args.native_timestamps}")
+              f"native_timestamps={args.native_timestamps} visual_gated={args.visual_gated}")
 
     try:
         if args.engine == "pade":
@@ -129,9 +192,16 @@ def main():
                 pid=pid,
                 mode=mode,
                 fps=args.fps,
+                low_fps=args.low_fps,
+                medium_fps=args.medium_fps,
+                visual_gated=args.visual_gated,
+                selection_hold_n=args.selection_hold_n,
                 num_animals=num_animals,
                 max_passage_seconds=max_passage_seconds,
                 native_timestamps=args.native_timestamps,
+                visual_event_enabled=visual_event_enabled,
+                visual_mad_threshold=visual_mad_threshold,
+                visual_idle_patience=visual_idle_patience,
                 verbose=args.debug,
             )
         else:

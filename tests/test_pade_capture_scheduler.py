@@ -65,15 +65,18 @@ class FakeDataset:
 
 
 class FakeAgent:
-    def __init__(self, scheduler, frame_store):
+    def __init__(self, scheduler, frame_store, fail_visual_send=False):
         self.aid = SimpleNamespace(name="capture@localhost:5003")
         self.simulation_started = True
         self.scheduler = scheduler
         self.frame_store = frame_store
         self.sent = []
         self.frame_present_when_sent = []
+        self.fail_visual_send = fail_visual_send
 
     def send(self, message):
+        if self.fail_visual_send and message.ontology == "visual-event":
+            raise RuntimeError("synthetic visual send failure")
         payload = json.loads(message.content)
         if payload.get("event_type") == "frame":
             self.frame_present_when_sent.append(
@@ -96,8 +99,16 @@ def make_index(times):
 def pipeline_records(agent):
     return [
         (at, payload)
-        for at, _, payload in agent.sent
-        if payload.get("event_type") is not None
+        for at, ontology, payload in agent.sent
+        if ontology == "pipeline-event" and payload.get("event_type") is not None
+    ]
+
+
+def visual_records(agent):
+    return [
+        (at, payload)
+        for at, ontology, payload in agent.sent
+        if ontology == "visual-event" and payload.get("event_type") is not None
     ]
 
 
@@ -183,11 +194,17 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         missing=(),
         telemetry_context=None,
         capture_timing_recorder=None,
+        visual_agent_aid=None,
+        fail_visual_send=False,
     ):
         scheduler = FakeScheduler()
         store = FrameStore()
         dataset = FakeDataset(indexes, missing=missing)
-        agent = FakeAgent(scheduler, store)
+        agent = FakeAgent(
+            scheduler,
+            store,
+            fail_visual_send=fail_visual_send,
+        )
         frame_ids = iter(f"frame-{index}" for index in range(1000))
         behaviour = DatasetCaptureBehaviour(
             agent=agent,
@@ -201,6 +218,7 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             frame_store=store,
             telemetry_context=telemetry_context,
             capture_timing_recorder=capture_timing_recorder,
+            visual_agent_aid=visual_agent_aid,
             call_later=scheduler.call_later,
             monotonic=lambda: scheduler.now,
             iso_now=lambda: f"t={scheduler.now:.3f}",
@@ -428,6 +446,57 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         self.assertEqual(records[1]["total_captured_frames"], 1)
         self.assertEqual(len(store), 1)
 
+    def test_visual_disabled_preserves_exact_main_event_stream_and_has_no_leases(self):
+        indexes = {
+            "N": make_index([0.0, 500.0]),
+            "N+1": make_index([0.0, 500.0]),
+        }
+        _, off_store, _, off_agent, _ = self.run_capture(indexes, fps=2.0)
+        _, on_store, _, on_agent, _ = self.run_capture(
+            indexes,
+            fps=2.0,
+            visual_agent_aid="visual@localhost:5007",
+        )
+
+        self.assertEqual(pipeline_records(off_agent), pipeline_records(on_agent))
+        self.assertEqual(off_store.lease_count(owner="visual"), 0)
+        self.assertEqual(on_store.lease_count(owner="visual"), 4)
+        self.assertEqual(visual_records(off_agent), [])
+
+    def test_visual_edge_has_independent_contiguous_sequence_and_no_array_payload(self):
+        _, store, dataset, agent, _ = self.run_capture(
+            {"N": make_index([0.0, 500.0])},
+            fps=2.0,
+            visual_agent_aid="visual@localhost:5007",
+        )
+        visual = [payload for _, payload in visual_records(agent)]
+
+        self.assertEqual([item["stream_seq"] for item in visual], [0, 1, 2, 3])
+        self.assertEqual(
+            [item["event_type"] for item in visual],
+            ["visual_frame", "visual_frame", "end_passage", "end_pipeline"],
+        )
+        for item in visual[:2]:
+            self.assertNotIn("image", item)
+            self.assertNotIn("raw", item)
+            leased = store.read_lease(item["lease_id"], owner="visual")
+            source = dataset.images[("N", item["depth_filename"])]
+            self.assertIs(leased, source)
+
+    def test_visual_send_failure_releases_leases_and_main_pipeline_continues(self):
+        _, store, _, agent, _ = self.run_capture(
+            {"N": make_index([0.0, 500.0])},
+            fps=2.0,
+            visual_agent_aid="visual@localhost:5007",
+            fail_visual_send=True,
+        )
+
+        self.assertEqual(
+            [payload["event_type"] for _, payload in pipeline_records(agent)],
+            ["frame", "frame", "end_passage", "end_pipeline"],
+        )
+        self.assertEqual(store.lease_count(owner="visual"), 0)
+
 
 class PadeCaptureIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -455,6 +524,27 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
 
         self.assertIsNone(strategy.fps)
         self.assertTrue(strategy.native_timestamps)
+
+    def test_visual_strategy_requires_explicit_provisional_configuration(self):
+        with self.assertRaises(ValueError):
+            MASStrategy(
+                pid="test",
+                mode="single",
+                fps=5.0,
+                visual_event_enabled=True,
+            )
+
+        strategy = MASStrategy(
+            pid="test",
+            mode="single",
+            fps=5.0,
+            visual_event_enabled=True,
+            visual_mad_threshold=67.5,
+            visual_idle_patience=3,
+        )
+        self.assertTrue(strategy.visual_event_enabled)
+        self.assertEqual(strategy.visual_mad_threshold, 67.5)
+        self.assertEqual(strategy.visual_idle_patience, 3)
 
     def test_entrypoint_accepts_native_timestamps_with_pade(self):
         module_path = pathlib.Path(__file__).parents[1] / "mas-main.py"
@@ -491,6 +581,48 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
         self.assertIsNone(created[0].kwargs["fps"])
         self.assertTrue(created[0].kwargs["native_timestamps"])
         self.assertTrue(created[0].ran)
+
+    def test_entrypoint_passes_explicit_visual_configuration_to_pade(self):
+        module_path = pathlib.Path(__file__).parents[1] / "mas-main.py"
+        spec = importlib.util.spec_from_file_location(
+            "mas_main_visual_entrypoint",
+            module_path,
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        created = []
+
+        class FakeStrategy:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                created.append(self)
+
+            def run(self):
+                return None
+
+        argv = [
+            "mas-main.py",
+            "mas-single",
+            "5",
+            "--engine",
+            "pade",
+            "--visual-event",
+            "--visual-mad-threshold",
+            "67.5",
+            "--visual-idle-patience",
+            "3",
+        ]
+        with (
+            patch.object(module, "MASStrategy", FakeStrategy),
+            patch.object(module.sys, "argv", argv),
+            patch.object(module.os, "makedirs"),
+        ):
+            module.main()
+
+        self.assertEqual(len(created), 1)
+        self.assertTrue(created[0].kwargs["visual_event_enabled"])
+        self.assertEqual(created[0].kwargs["visual_mad_threshold"], 67.5)
+        self.assertEqual(created[0].kwargs["visual_idle_patience"], 3)
 
 
 if __name__ == "__main__":

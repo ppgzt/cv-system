@@ -39,6 +39,7 @@ PY_PI="${PY_PI:-/home/ewertonsjp/.pyenv/versions/cv_vend_mas/bin/python}"
 
 # --- Experimento (defaults = TESTE rápido) ---
 MODE="${MODE:-mas-single}"           # mas-single | mas-batch (env-overridable p/ bateria)
+ENGINE="${ENGINE:-thread}"           # thread | pade
 FPS="${FPS:-5}"
 NUM_ANIMALS="${NUM_ANIMALS:-}"         # vazio = TODOS os animais (rebanho completo)
 EXTRA_ARGS="${EXTRA_ARGS:---debug}"  # --debug grava debug.log no Pi; vazio p/ desligar
@@ -64,9 +65,9 @@ ts() { date "+%Y-%m-%dT%H:%M:%S%z"; }
 
 echo "=========================================================="
 if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
-    echo "  POWER TEST — ${MODE} @ native timestamps, ${NUM_ANIMALS:-todos} animais"
+    echo "  POWER TEST — ${MODE}/${ENGINE} @ native timestamps, ${NUM_ANIMALS:-todos} animais"
 else
-    echo "  POWER TEST — ${MODE} @ ${FPS} fps, ${NUM_ANIMALS:-todos} animais"
+    echo "  POWER TEST — ${MODE}/${ENGINE} @ ${FPS} fps, ${NUM_ANIMALS:-todos} animais"
 fi
 echo "  Voltímetro : ${PORT}   (este Mac)"
 echo "  Pipeline   : ${PI_HOST}:${PI_DIR}  (Raspberry, via SSH)"
@@ -114,11 +115,30 @@ fi
 
 # --- 3. Roda o pipeline no Raspberry (SSH bloqueia até terminar) ---
 echo "[2/5] Disparando pipeline no Raspberry via SSH..."
+case "$ENGINE" in
+    thread|pade) ;;
+    *)
+        echo "[ERROR] ENGINE deve ser thread ou pade (recebido: $ENGINE)"
+        kill -INT "$TC66_PID" 2>/dev/null
+        exit 2
+        ;;
+esac
+
+# O marcador torna a descoberta do report específica desta invocação, em vez
+# de copiar silenciosamente a pasta mais recente de uma execução antiga.
+REMOTE_MARKER=".run_power_test_${RUN_TAG}_$$_marker"
+if ! ssh -o BatchMode=yes "$PI_HOST" \
+    "cd ${PI_DIR} && : > '${REMOTE_MARKER}'"; then
+    echo "[ERROR] Não foi possível criar marcador remoto para esta run."
+    kill -INT "$TC66_PID" 2>/dev/null
+    exit 1
+fi
+
 if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
-    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' --native-timestamps"
+    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' --engine '${ENGINE}' --native-timestamps"
     [ -n "$NUM_ANIMALS" ] && CMD+=" --num-animals '${NUM_ANIMALS}'"
 else
-    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' '${FPS}'"
+    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' '${FPS}' --engine '${ENGINE}'"
     [ -n "$NUM_ANIMALS" ] && CMD+=" '${NUM_ANIMALS}'"
 fi
 [ -n "$EXTRA_ARGS" ]  && CMD+=" ${EXTRA_ARGS}"
@@ -157,16 +177,24 @@ echo "      power.csv reconstruído: $(($(wc -l < "$POWER_CSV")-1)) amostras"
 echo "[4/5] Puxando relatório do Raspberry..."
 # Caminho ABSOLUTO: scp resolve relativo ao HOME remoto, não ao repo, então
 # usamos $PWD (expandido no shell remoto) pra prefixar o diretório de reports.
-REMOTE_DIR=$(ssh -o BatchMode=yes "$PI_HOST" \
-    "cd ${PI_DIR} && ls -td \"\$PWD\"/infra/reports/* 2>/dev/null | head -n1")
-if [ -n "$REMOTE_DIR" ]; then
+REMOTE_DIRS=()
+while IFS= read -r remote_dir; do
+    [ -n "$remote_dir" ] && REMOTE_DIRS+=("$remote_dir")
+done < <(ssh -o BatchMode=yes "$PI_HOST" \
+    "cd ${PI_DIR} && find \"\$PWD\"/infra/reports -mindepth 1 -maxdepth 1 -type d -newer '${REMOTE_MARKER}' -name '${MODE}_${ENGINE}_*' -print 2>/dev/null")
+ssh -o BatchMode=yes "$PI_HOST" \
+    "cd ${PI_DIR} && rm -f '${REMOTE_MARKER}'" >/dev/null 2>&1 || true
+
+if [ "${#REMOTE_DIRS[@]}" -eq 1 ]; then
+    REMOTE_DIR="${REMOTE_DIRS[0]}"
     if scp -q -o BatchMode=yes -r "${PI_HOST}:${REMOTE_DIR}" "$OUT_DIR/"; then
         echo "      puxado: ${REMOTE_DIR} -> ${OUT_DIR}/"
     else
         echo "      [WARN] scp falhou (relatórios continuam no Pi em ${REMOTE_DIR})"
     fi
 else
-    echo "      [WARN] não localizei a pasta de relatório no Pi"
+    echo "      [WARN] esperado exatamente um report novo ${MODE}_${ENGINE}_*; encontrados ${#REMOTE_DIRS[@]}"
+    [ "${#REMOTE_DIRS[@]}" -gt 0 ] && printf '             %s\n' "${REMOTE_DIRS[@]}"
 fi
 
 # --- Resumo ---
@@ -177,3 +205,4 @@ echo "  pipeline   : ${SSH_LOG}    (ssh exit=${SSH_STATUS})"
 [ "$SSH_STATUS" -ne 0 ] && echo "  [WARN] pipeline saiu com erro — veja ${SSH_LOG}"
 echo "  pasta      : ${OUT_DIR}"
 echo "=========================================================="
+exit "$SSH_STATUS"

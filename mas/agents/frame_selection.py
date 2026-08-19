@@ -26,7 +26,9 @@ from domain.pipeline_events import (
     EndPipelineEvent,
     FrameEvent,
     PipelineEvent,
+    SelectionEvidenceEvent,
     event_from_json,
+    event_to_dict,
     event_to_json,
 )
 from infra.profiling.telemetry import CaptureTimingRecorder, TelemetryContext
@@ -37,6 +39,8 @@ from mas.infrastructure.stream_sequence import StreamSequencer
 
 
 PIPELINE_EVENT_ONTOLOGY = "pipeline-event"
+SELECTION_EVIDENCE_ONTOLOGY = "selection-evidence"
+
 
 
 class FrameSelectionAgent(Agent):
@@ -49,11 +53,13 @@ class FrameSelectionAgent(Agent):
         next_agent_aid: str,
         predict_agent_aid: str | None = None,
         capture_agent_aid: str | None = None,
+        orchestrator_agent_aid: str | None = None,
         frame_store: FrameStore = FRAME_STORE,
         inbox: OrderedInbox[PipelineEvent] | None = None,
         output_sequencer: StreamSequencer | None = None,
         telemetry_context: TelemetryContext | None = None,
         capture_timing_recorder: CaptureTimingRecorder | None = None,
+        evidence_publisher: Callable[[SelectionEvidenceEvent], None] | None = None,
         monotonic_ns: Callable[[], int] = time.monotonic_ns,
         defer_executor: Callable = deferToThread,
         debug: bool = False,
@@ -66,11 +72,13 @@ class FrameSelectionAgent(Agent):
         # possui mais aresta nem protocolo de finalizacao direto com Prediction.
         self.predict_agent_aid = predict_agent_aid
         self.capture_agent_aid = capture_agent_aid
+        self.orchestrator_agent_aid = orchestrator_agent_aid
         self.frame_store = frame_store
         self.inbox = inbox or OrderedInbox()
         self.output_sequencer = output_sequencer or StreamSequencer()
         self.telemetry_context = telemetry_context
         self.capture_timing_recorder = capture_timing_recorder
+        self.evidence_publisher = evidence_publisher
         self._monotonic_ns = monotonic_ns
         self._defer_executor = defer_executor
         self.verbose = verbose
@@ -257,6 +265,45 @@ class FrameSelectionAgent(Agent):
             f"frame_id={event.frame_id} {action} (p={probability:.4f}). "
             f"Discarded={self.discarded}, Forwarded={self.forwarded}",
         )
+
+        evidence = SelectionEvidenceEvent(
+            passage_id=event.passage_id,
+            capture_index=event.capture_index,
+            frame_id=event.frame_id,
+            stream_seq=event.stream_seq,
+            accepted=suitable,
+            probability=probability,
+        )
+        if self.evidence_publisher is not None:
+            try:
+                self.evidence_publisher(evidence)
+            except Exception as exc:
+                display_message(
+                    self.aid.name,
+                    f"[ERROR] Evidence publisher failed: {exc}",
+                )
+
+        if self.orchestrator_agent_aid is not None:
+            try:
+                msg = ACLMessage(ACLMessage.INFORM)
+                msg.set_ontology(SELECTION_EVIDENCE_ONTOLOGY)
+                msg.add_receiver(AID(self.orchestrator_agent_aid))
+                msg.set_content(json.dumps(event_to_dict(evidence)))
+                self._safe_send(msg)
+            except Exception as exc:
+                display_message(
+                    self.aid.name,
+                    f"[ERROR] Failed to send selection evidence: {exc}",
+                )
+
+    def _safe_send(self, msg: ACLMessage) -> None:
+        try:
+            if hasattr(self, "agentInstance") and self.agentInstance is not None:
+                self.send(msg)
+        except Exception as exc:
+            if self.verbose:
+                display_message(self.aid.name, f"[WARN] send failed: {exc}")
+
 
     def _selection_failed(self, failure, event: FrameEvent):
         try:

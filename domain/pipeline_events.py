@@ -66,18 +66,60 @@ class EndPipelineEvent:
         _validate_stream_seq(self.stream_seq)
 
 
-PipelineEvent: TypeAlias = FrameEvent | EndPassageEvent | EndPipelineEvent
+@dataclass(frozen=True, slots=True)
+class SelectionEvidenceEvent:
+    """Evidencia compacta da decisao real do Selection emitida ao Orchestrator."""
+
+    EVENT_TYPE: ClassVar[str] = "selection_evidence"
+
+    passage_id: str
+    capture_index: int
+    frame_id: str
+    stream_seq: int
+    accepted: bool
+    probability: float
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureControlEvent:
+    """Comando ou notificacao de controle de taxa e roteamento do Capturador."""
+
+    EVENT_TYPE: ClassVar[str] = "capture_control"
+
+    passage_id: str
+    target_rate: str  # "LOW", "MEDIUM", "HIGH"
+    reason: str | None = None
+
+
+PipelineEvent: TypeAlias = (
+    FrameEvent
+    | EndPassageEvent
+    | EndPipelineEvent
+    | SelectionEvidenceEvent
+    | CaptureControlEvent
+)
 
 _EVENT_CLASSES = {
     FrameEvent.EVENT_TYPE: FrameEvent,
     EndPassageEvent.EVENT_TYPE: EndPassageEvent,
     EndPipelineEvent.EVENT_TYPE: EndPipelineEvent,
+    SelectionEvidenceEvent.EVENT_TYPE: SelectionEvidenceEvent,
+    CaptureControlEvent.EVENT_TYPE: CaptureControlEvent,
 }
 
 
 def event_to_dict(event: PipelineEvent) -> dict:
     """Converte um evento para payload serializavel, preservando seu tipo."""
-    if not isinstance(event, (FrameEvent, EndPassageEvent, EndPipelineEvent)):
+    if not isinstance(
+        event,
+        (
+            FrameEvent,
+            EndPassageEvent,
+            EndPipelineEvent,
+            SelectionEvidenceEvent,
+            CaptureControlEvent,
+        ),
+    ):
         raise TypeError(f"unsupported pipeline event: {type(event).__name__}")
     return {"event_type": event.EVENT_TYPE, **asdict(event)}
 
@@ -106,3 +148,4 @@ def event_from_json(payload: str) -> PipelineEvent:
     if not isinstance(decoded, dict):
         raise ValueError("pipeline event JSON must contain an object")
     return event_from_dict(decoded)
+

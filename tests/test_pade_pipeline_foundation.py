@@ -2,6 +2,8 @@ import queue
 import threading
 import unittest
 
+import numpy as np
+
 from domain.pipeline_events import (
     EndPassageEvent,
     EndPipelineEvent,
@@ -283,6 +285,61 @@ class FrameStoreTests(unittest.TestCase):
                     store.get(f"{thread_index}-{frame_index}"),
                     (thread_index, frame_index),
                 )
+
+    def test_read_lease_is_zero_copy_and_survives_main_entry_changes(self):
+        store = FrameStore()
+        raw = np.arange(12, dtype=np.uint16).reshape(3, 4)
+        enhanced = np.ones((3, 4, 3), dtype=np.float32)
+        store.put("frame", raw)
+        lease_id = store.retain("frame", owner="visual", passage_id="N")
+
+        leased = store.read_lease(lease_id, owner="visual")
+        self.assertIs(leased, raw)
+        self.assertTrue(np.shares_memory(raw, leased))
+
+        store.put("frame", enhanced)
+        self.assertIs(store.get("frame"), enhanced)
+        self.assertIs(store.read_lease(lease_id, owner="visual"), raw)
+
+        self.assertIs(store.pop("frame"), enhanced)
+        self.assertIs(store.read_lease(lease_id, owner="visual"), raw)
+        self.assertTrue(store.release_lease(lease_id, owner="visual"))
+        self.assertFalse(store.release_lease(lease_id, owner="visual"))
+        with self.assertRaises(KeyError):
+            store.read_lease(lease_id, owner="visual")
+
+    def test_discard_does_not_invalidate_lease_and_owner_is_enforced(self):
+        store = FrameStore()
+        raw = object()
+        store.put("frame", raw)
+        lease_id = store.retain("frame", owner="visual", passage_id="N")
+
+        self.assertTrue(store.discard("frame"))
+        self.assertIs(store.read_lease(lease_id, owner="visual"), raw)
+        with self.assertRaises(PermissionError):
+            store.read_lease(lease_id, owner="selection")
+        with self.assertRaises(PermissionError):
+            store.release_lease(lease_id, owner="selection")
+
+    def test_passage_cleanup_only_releases_matching_visual_leases(self):
+        store = FrameStore()
+        for frame_id in ("n-a", "n-b", "next", "other"):
+            store.put(frame_id, object())
+        n_a = store.retain("n-a", owner="visual", passage_id="N")
+        n_b = store.retain("n-b", owner="visual", passage_id="N")
+        next_id = store.retain("next", owner="visual", passage_id="N+1")
+        other = store.retain("other", owner="debug", passage_id="N")
+
+        self.assertEqual(
+            store.release_leases(owner="visual", passage_id="N"),
+            2,
+        )
+        self.assertEqual(store.lease_count(owner="visual"), 1)
+        self.assertIsNotNone(store.read_lease(next_id, owner="visual"))
+        self.assertIsNotNone(store.read_lease(other, owner="debug"))
+        for lease_id in (n_a, n_b):
+            with self.assertRaises(KeyError):
+                store.read_lease(lease_id, owner="visual")
 
 
 if __name__ == "__main__":

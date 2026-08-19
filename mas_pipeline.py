@@ -30,22 +30,45 @@ class MASStrategy:
         self,
         pid: str,
         mode: str,
-        fps: float | None,
+        fps: float | None = None,
+        low_fps: float | None = None,
+        medium_fps: float | None = None,
+        visual_gated: bool = False,
+        selection_hold_n: int = 2,
         num_animals: int | None = None,
         max_passage_seconds: float | None = None,
         data_root: str = "data/exp1",
         native_timestamps: bool = False,
         capture_timing_enabled: bool = True,
+        visual_event_enabled: bool = False,
+        visual_mad_threshold: float | None = None,
+        visual_idle_patience: int | None = None,
         verbose: bool = False,
     ):
+        if visual_event_enabled:
+            if visual_mad_threshold is None or visual_mad_threshold < 0:
+                raise ValueError(
+                    "visual_mad_threshold must be provided and non-negative"
+                )
+            if visual_idle_patience is None or visual_idle_patience <= 0:
+                raise ValueError(
+                    "visual_idle_patience must be provided and positive"
+                )
         self.pid = pid
         self.mode = mode
         self.fps = fps
+        self.low_fps = low_fps
+        self.medium_fps = medium_fps
+        self.visual_gated = visual_gated
+        self.selection_hold_n = selection_hold_n
         self.num_animals = num_animals
         self.max_passage_seconds = max_passage_seconds
         self.data_root = data_root
         self.native_timestamps = native_timestamps
         self.capture_timing_enabled = capture_timing_enabled
+        self.visual_event_enabled = visual_event_enabled
+        self.visual_mad_threshold = visual_mad_threshold
+        self.visual_idle_patience = visual_idle_patience
         self.verbose = verbose
 
     def run(self):
@@ -67,6 +90,7 @@ class MASStrategy:
         from mas.agents.data_enhance_agent import DataEnhanceAgent
         from mas.agents.frame_selection import FrameSelectionAgent
         from mas.agents.predict_weight_agent import PredictWeightAgent
+        from mas.agents.visual_event_agent import VisualEventAgent
 
         from mas.adapters.data_enhance_adapter import DataEnhanceAdapter
         from mas.adapters.frame_selection_adapter import FrameSelectionAdapter
@@ -109,6 +133,8 @@ class MASStrategy:
         # base_port+1: DataEnhanceAgent
         # base_port+2: FrameSelectionAgent
         # base_port+3: PredictWeightAgent
+        # base_port+4: VisualEventAgent (opcional)
+        # base_port+5: OrchestratorAgent (opcional/adaptativo)
         # base_port+6: ResourceManagerAgent
 
         def aid(name, offset):
@@ -119,6 +145,8 @@ class MASStrategy:
         enhance_aid = aid("data_enhance_agent", 1)
         selection_aid = aid("frame_selection_agent", 2)
         predict_aid = aid("predict_weight_agent", 3)
+        visual_aid = aid("visual_event_agent", 4)
+        orch_aid = aid("orchestrator_agent", 5)
         rm_aid = aid("resource_manager_agent", 6)
 
         weight_model_path = "infra/models/sheep_weight_predictor.tflite"
@@ -158,6 +186,22 @@ class MASStrategy:
             ),
         )
 
+        orchestrator_agent = None
+        if self.visual_event_enabled or self.low_fps is not None:
+            from mas.agents.orchestrator_agent import OrchestratorAgent
+            orchestrator_agent = OrchestratorAgent(
+                aid=orch_aid,
+                capture_agent_aid=capture_aid.name,
+                n_hold=self.selection_hold_n,
+                verbose=self.verbose,
+            )
+
+        wait_for_aids = [selection_aid.name, predict_aid.name]
+        if self.visual_event_enabled:
+            wait_for_aids.append(visual_aid.name)
+        if orchestrator_agent is not None:
+            wait_for_aids.append(orch_aid.name)
+
         capture_agent = DatasetCaptureAgent(
             aid=capture_aid,
             dataset=dataset,
@@ -165,10 +209,19 @@ class MASStrategy:
             selection_agent_aid=selection_aid.name,
             animal_tags=animal_tags,
             fps=self.fps,
+            low_fps=self.low_fps,
+            medium_fps=self.medium_fps,
+            visual_gated=self.visual_gated,
+            orchestrator_agent_aid=(
+                orch_aid.name if orchestrator_agent is not None else None
+            ),
             max_passage_seconds=self.max_passage_seconds,
             native_timestamps=self.native_timestamps,
-            wait_for_aids=[selection_aid.name, predict_aid.name],
+            wait_for_aids=wait_for_aids,
             frame_store=FRAME_STORE,
+            visual_agent_aid=(
+                visual_aid.name if self.visual_event_enabled else None
+            ),
             verbose=self.verbose,
         )
 
@@ -184,6 +237,9 @@ class MASStrategy:
             frame_selection_adapter=selection_adapter,
             next_agent_aid=enhance_aid.name,
             capture_agent_aid=capture_aid.name,
+            orchestrator_agent_aid=(
+                orch_aid.name if orchestrator_agent is not None else None
+            ),
             frame_store=FRAME_STORE,
             verbose=self.verbose,
         )
@@ -195,6 +251,20 @@ class MASStrategy:
             debug=False,
         )
         resource_agent.ams = {"name": ams_host, "port": ams_port}
+
+        visual_agent = None
+        if self.visual_event_enabled:
+            visual_agent = VisualEventAgent(
+                aid=visual_aid,
+                capture_agent_aid=capture_aid.name,
+                orchestrator_agent_aid=(
+                    orch_aid.name if orchestrator_agent is not None else None
+                ),
+                mad_threshold=self.visual_mad_threshold,
+                idle_patience_frames=self.visual_idle_patience,
+                pid=self.pid,
+                frame_store=FRAME_STORE,
+            )
 
         telemetry = PadeTelemetrySession(
             run_id=self.pid,
@@ -217,12 +287,21 @@ class MASStrategy:
         reactor.addSystemEventTrigger(
             'before', 'shutdown', resource_agent.stop_monitoring
         )
+        if visual_agent is not None:
+            reactor.addSystemEventTrigger(
+                'before', 'shutdown', visual_agent.stop_visual_monitoring
+            )
 
         # 8. Conecta todos os agentes ao AMS e ao reator
         all_agents = [
             resource_agent, capture_agent, enhance_agent,
             selection_agent, predict_agent,
         ]
+        if visual_agent is not None:
+            all_agents.append(visual_agent)
+        if orchestrator_agent is not None:
+            all_agents.append(orchestrator_agent)
+
 
         # Ambos iniciam antes de qualquer on_start que possa admitir o primeiro
         # frame. Permanecem ativos até o shutdown posterior ao drain global.

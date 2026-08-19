@@ -211,3 +211,10 @@ mas/pade/web/data.sqlite
 
 # Include debug files from reports
 !infra/reports/*/debug.jog
+
+# Outputs de simulacoes e analises exploratorias
+data-analysis/*/output/
+data-analysis/*_output/
+data-analysis/visual_event_relabeling/depth_panels/
+recon_runs/
+
