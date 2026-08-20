@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import Callable
 
@@ -335,7 +336,7 @@ class DatasetCaptureBehaviour(Behaviour):
         self.captured_count += 1
 
         event = FrameEvent(
-            stream_seq=self._sequencer.next_seq(),
+            stream_seq=0,
             frame_id=frame_id,
             passage_id=tag,
             capture_index=self.captured_count,
@@ -421,7 +422,7 @@ class DatasetCaptureBehaviour(Behaviour):
                 self.agent.aid.name,
                 f"[CAPTURE] animal={tag} idx={self.captured_count} "
                 f"t={event.elapsed_time:.1f}ms label={event.label} "
-                f"rate={self._current_rate} seq={event.stream_seq} -> {self.next_agent_aid}",
+                f"rate={self._current_rate} -> {self.next_agent_aid}",
             )
 
     def handle_visual_state(self, obs: VisualStateEvent) -> None:
@@ -487,7 +488,7 @@ class DatasetCaptureBehaviour(Behaviour):
         self._pending_low_frames.clear()
 
         event = EndPassageEvent(
-            stream_seq=self._sequencer.next_seq(),
+            stream_seq=0,
             passage_id=tag,
             total_captured_frames=self.captured_count,
             first_capture_time=self.first_capture,
@@ -528,7 +529,7 @@ class DatasetCaptureBehaviour(Behaviour):
             return
         self._finished = True
 
-        event = EndPipelineEvent(stream_seq=self._sequencer.next_seq())
+        event = EndPipelineEvent(stream_seq=0)
         self._send_pipeline_event(event)
         if self.visual_agent_aid is not None:
             visual_end = EndPipelineEvent(
@@ -547,6 +548,7 @@ class DatasetCaptureBehaviour(Behaviour):
         )
 
     def _send_pipeline_event(self, event) -> None:
+        event = replace(event, stream_seq=self._sequencer.next_seq())
         self._send_message(
             receiver=self.next_agent_aid,
             ontology=PIPELINE_EVENT_ONTOLOGY,
@@ -722,7 +724,7 @@ class DatasetCaptureAgent(Agent):
                     capture_index=data["capture_index"],
                     elapsed_time=data["elapsed_time"],
                     dataset_timestamp_ms=data.get("dataset_timestamp_ms"),
-                    mad=data.get("mad"),
+                    pdi_score=data.get("pdi_score", data.get("mad")),
                     moving=data.get("moving"),
                     visual_state=VisualState(data["visual_state"]),
                     transition=data.get("transition"),
@@ -730,6 +732,10 @@ class DatasetCaptureAgent(Agent):
                     depth_filename=data.get("depth_filename"),
                     frame_id=data.get("frame_id"),
                     is_trigger=data.get("is_trigger", False),
+                    is_invalid=data.get("is_invalid", False),
+                    p99_mm=data.get("p99_mm"),
+                    fraction_ge_2500=data.get("fraction_ge_2500"),
+                    mad=data.get("mad"),
                 )
                 if hasattr(self, "capture_behaviour"):
                     self.capture_behaviour.handle_visual_state(event)

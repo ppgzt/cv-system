@@ -539,11 +539,13 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
             mode="single",
             fps=5.0,
             visual_event_enabled=True,
-            visual_mad_threshold=67.5,
+            visual_pdi_threshold=0.0875,
+            visual_pixel_threshold_mm=200.0,
             visual_idle_patience=3,
         )
         self.assertTrue(strategy.visual_event_enabled)
-        self.assertEqual(strategy.visual_mad_threshold, 67.5)
+        self.assertEqual(strategy.visual_pdi_threshold, 0.0875)
+        self.assertEqual(strategy.visual_pixel_threshold_mm, 200.0)
         self.assertEqual(strategy.visual_idle_patience, 3)
 
     def test_entrypoint_accepts_native_timestamps_with_pade(self):
@@ -607,8 +609,10 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
             "--engine",
             "pade",
             "--visual-event",
-            "--visual-mad-threshold",
-            "67.5",
+            "--visual-pdi-threshold",
+            "0.0875",
+            "--visual-pixel-threshold-mm",
+            "200.0",
             "--visual-idle-patience",
             "3",
         ]
@@ -621,7 +625,8 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
 
         self.assertEqual(len(created), 1)
         self.assertTrue(created[0].kwargs["visual_event_enabled"])
-        self.assertEqual(created[0].kwargs["visual_mad_threshold"], 67.5)
+        self.assertEqual(created[0].kwargs["visual_pdi_threshold"], 0.0875)
+        self.assertEqual(created[0].kwargs["visual_pixel_threshold_mm"], 200.0)
         self.assertEqual(created[0].kwargs["visual_idle_patience"], 3)
 
 

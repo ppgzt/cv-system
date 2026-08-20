@@ -46,14 +46,18 @@ class VisualStateEvent:
     capture_index: int
     elapsed_time: float
     dataset_timestamp_ms: float | None
-    mad: float | None
     moving: bool | None
     visual_state: VisualState
     transition: str | None
     processing_time_ms: float
+    pdi_score: float | None = None
     depth_filename: str | None = None
     frame_id: str | None = None
     is_trigger: bool = False
+    is_invalid: bool = False
+    p99_mm: float | None = None
+    fraction_ge_2500: float | None = None
+    mad: float | None = None
 
 
 _VISUAL_TYPES = {

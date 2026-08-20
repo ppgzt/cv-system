@@ -41,6 +41,7 @@ PY_PI="${PY_PI:-/home/ewertonsjp/.pyenv/versions/cv_vend_mas/bin/python}"
 MODE="${MODE:-mas-single}"           # mas-single | mas-batch (env-overridable p/ bateria)
 ENGINE="${ENGINE:-thread}"           # thread | pade
 FPS="${FPS:-5}"
+LOW_FPS="${LOW_FPS:-}"
 NUM_ANIMALS="${NUM_ANIMALS:-}"         # vazio = TODOS os animais (rebanho completo)
 EXTRA_ARGS="${EXTRA_ARGS:---debug}"  # --debug grava debug.log no Pi; vazio p/ desligar
 NATIVE_TIMESTAMPS="${NATIVE_TIMESTAMPS:-0}"
@@ -55,6 +56,8 @@ WORK_DIR="${WORK_DIR:-./power_runs}"
 OUT_DIR="${WORK_DIR}/${MODE}_${FPS}fps_${RUN_TAG}"
 if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
     OUT_DIR="${WORK_DIR}/${MODE}_native_${RUN_TAG}"
+elif [ -n "$LOW_FPS" ]; then
+    OUT_DIR="${WORK_DIR}/${MODE}_low${LOW_FPS}fps_${RUN_TAG}"
 fi
 POWER_CSV="${OUT_DIR}/power.csv"
 TC66_LOG="${OUT_DIR}/tc66.log"
@@ -66,6 +69,8 @@ ts() { date "+%Y-%m-%dT%H:%M:%S%z"; }
 echo "=========================================================="
 if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
     echo "  POWER TEST — ${MODE}/${ENGINE} @ native timestamps, ${NUM_ANIMALS:-todos} animais"
+elif [ -n "$LOW_FPS" ]; then
+    echo "  POWER TEST — ${MODE}/${ENGINE} @ adaptive (LOW=${LOW_FPS} fps, HIGH=native), ${NUM_ANIMALS:-todos} animais"
 else
     echo "  POWER TEST — ${MODE}/${ENGINE} @ ${FPS} fps, ${NUM_ANIMALS:-todos} animais"
 fi
@@ -73,6 +78,7 @@ echo "  Voltímetro : ${PORT}   (este Mac)"
 echo "  Pipeline   : ${PI_HOST}:${PI_DIR}  (Raspberry, via SSH)"
 echo "  Saída      : ${OUT_DIR}"
 echo "=========================================================="
+
 mkdir -p "$OUT_DIR"
 
 # --- 0. Sanidade: a porta existe? ---
@@ -127,7 +133,7 @@ esac
 # O marcador torna a descoberta do report específica desta invocação, em vez
 # de copiar silenciosamente a pasta mais recente de uma execução antiga.
 REMOTE_MARKER=".run_power_test_${RUN_TAG}_$$_marker"
-if ! ssh -o BatchMode=yes "$PI_HOST" \
+if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$PI_HOST" \
     "cd ${PI_DIR} && : > '${REMOTE_MARKER}'"; then
     echo "[ERROR] Não foi possível criar marcador remoto para esta run."
     kill -INT "$TC66_PID" 2>/dev/null
@@ -135,13 +141,19 @@ if ! ssh -o BatchMode=yes "$PI_HOST" \
 fi
 
 if [ "$NATIVE_TIMESTAMPS" = "1" ]; then
-    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' --engine '${ENGINE}' --native-timestamps"
+    CMD="cd ${PI_DIR} && fuser -k 8000/tcp 2>/dev/null || true; ${PY_PI} mas-main.py '${MODE}' --engine '${ENGINE}' --native-timestamps"
+    [ -n "$NUM_ANIMALS" ] && CMD+=" --num-animals '${NUM_ANIMALS}'"
+elif [ -n "$LOW_FPS" ]; then
+    CMD="cd ${PI_DIR} && fuser -k 8000/tcp 2>/dev/null || true; ${PY_PI} mas-main.py '${MODE}' --engine '${ENGINE}'"
     [ -n "$NUM_ANIMALS" ] && CMD+=" --num-animals '${NUM_ANIMALS}'"
 else
-    CMD="cd ${PI_DIR} && ${PY_PI} mas-main.py '${MODE}' '${FPS}' --engine '${ENGINE}'"
+    CMD="cd ${PI_DIR} && fuser -k 8000/tcp 2>/dev/null || true; ${PY_PI} mas-main.py '${MODE}' '${FPS}' --engine '${ENGINE}'"
     [ -n "$NUM_ANIMALS" ] && CMD+=" '${NUM_ANIMALS}'"
 fi
 [ -n "$EXTRA_ARGS" ]  && CMD+=" ${EXTRA_ARGS}"
+
+
+
 echo "      ssh ${PI_HOST} \"${CMD}\""
 echo "[T0] início do pipeline: $(ts)" | tee -a "$SSH_LOG"
 ssh -o BatchMode=yes "$PI_HOST" "$CMD" 2>&1 | tee -a "$SSH_LOG"

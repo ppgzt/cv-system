@@ -41,14 +41,19 @@ class MASStrategy:
         native_timestamps: bool = False,
         capture_timing_enabled: bool = True,
         visual_event_enabled: bool = False,
-        visual_mad_threshold: float | None = None,
+        visual_pdi_threshold: float | None = None,
+        visual_pixel_threshold_mm: float = 200.0,
         visual_idle_patience: int | None = None,
         verbose: bool = False,
     ):
         if visual_event_enabled:
-            if visual_mad_threshold is None or visual_mad_threshold < 0:
+            if visual_pdi_threshold is None or visual_pdi_threshold < 0:
                 raise ValueError(
-                    "visual_mad_threshold must be provided and non-negative"
+                    "visual_pdi_threshold must be provided and non-negative"
+                )
+            if visual_pixel_threshold_mm <= 0:
+                raise ValueError(
+                    "visual_pixel_threshold_mm must be positive"
                 )
             if visual_idle_patience is None or visual_idle_patience <= 0:
                 raise ValueError(
@@ -67,7 +72,8 @@ class MASStrategy:
         self.native_timestamps = native_timestamps
         self.capture_timing_enabled = capture_timing_enabled
         self.visual_event_enabled = visual_event_enabled
-        self.visual_mad_threshold = visual_mad_threshold
+        self.visual_pdi_threshold = visual_pdi_threshold
+        self.visual_pixel_threshold_mm = visual_pixel_threshold_mm
         self.visual_idle_patience = visual_idle_patience
         self.verbose = verbose
 
@@ -161,15 +167,26 @@ class MASStrategy:
         )
         inference_adapter = InferenceAdapter(weight_model_path)
 
-        condition = (
-            "pade_original_timing"
-            if self.native_timestamps
-            else "pade_fixed_fps"
-        )
-        # A sessao será criada depois dos agentes, pois observa diretamente
-        # suas OrderedInboxes. Estes valores permanecem opacos à telemetria.
-        telemetry_condition = condition
-        telemetry_capture_fps = None if self.native_timestamps else self.fps
+        if self.low_fps is not None:
+            condition = (
+                "pade_visual_gated"
+                if self.visual_gated
+                else "pade_visual_adaptive"
+            )
+            telemetry_condition = condition
+            telemetry_capture_fps = None
+            capture_mode_str = "visual-gated" if self.visual_gated else "visual-adaptive"
+            predict_agent_fps = None
+        else:
+            condition = (
+                "pade_original_timing"
+                if self.native_timestamps
+                else "pade_fixed_fps"
+            )
+            telemetry_condition = condition
+            telemetry_capture_fps = None if self.native_timestamps else self.fps
+            capture_mode_str = "native-timestamps" if self.native_timestamps else None
+            predict_agent_fps = self.fps
 
         # 6. Agents
         predict_agent = PredictWeightAgent(
@@ -180,11 +197,10 @@ class MASStrategy:
             capture_agent_aid=capture_aid.name,
             frame_store=FRAME_STORE,
             verbose=self.verbose,
-            fps=self.fps,
-            capture_mode=(
-                "native-timestamps" if self.native_timestamps else None
-            ),
+            fps=predict_agent_fps,
+            capture_mode=capture_mode_str,
         )
+
 
         orchestrator_agent = None
         if self.visual_event_enabled or self.low_fps is not None:
@@ -260,7 +276,8 @@ class MASStrategy:
                 orchestrator_agent_aid=(
                     orch_aid.name if orchestrator_agent is not None else None
                 ),
-                mad_threshold=self.visual_mad_threshold,
+                pdi_threshold=self.visual_pdi_threshold,
+                pixel_threshold_mm=self.visual_pixel_threshold_mm,
                 idle_patience_frames=self.visual_idle_patience,
                 pid=self.pid,
                 frame_store=FRAME_STORE,

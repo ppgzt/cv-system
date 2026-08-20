@@ -74,19 +74,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--visual-event",
         action="store_true",
-        help="habilita o ramo observacional MAD do PADE",
+        help="habilita o ramo observacional visual PDI do PADE",
     )
     p.add_argument(
-        "--visual-mad-threshold",
+        "--visual-pdi-threshold",
         type=float,
         default=None,
-        help="threshold MAD (default: 15.0 se low-fps estiver ativo)",
+        help="threshold PDI de componente conexa (default: 0.08747855917667238)",
+    )
+    p.add_argument(
+        "--visual-pixel-threshold-mm",
+        type=float,
+        default=200.0,
+        help="threshold por pixel na ROI em mm (default: 200.0)",
     )
     p.add_argument(
         "--visual-idle-patience",
         type=int,
         default=None,
-        help="observações sem movimento para IDLE (default: 2 se low-fps estiver ativo)",
+        help="observações consecutivas sem movimento para IDLE (default: 3)",
     )
     p.add_argument(
         "--low-fps",
@@ -148,18 +154,21 @@ def main():
             parser.error("fps deve ser maior que zero")
 
     visual_event_enabled = args.visual_event or (args.low_fps is not None)
-    visual_mad_threshold = args.visual_mad_threshold
+    visual_pdi_threshold = args.visual_pdi_threshold
+    visual_pixel_threshold_mm = args.visual_pixel_threshold_mm
     visual_idle_patience = args.visual_idle_patience
 
     if visual_event_enabled:
         if args.engine != "pade":
             parser.error("Modo adaptativo / --visual-event está disponível somente no engine pade")
-        if visual_mad_threshold is None:
-            visual_mad_threshold = 15.0
-        if visual_mad_threshold < 0:
-            parser.error("--visual-mad-threshold deve ser não negativo")
+        if visual_pdi_threshold is None:
+            visual_pdi_threshold = 0.08747855917667238
+        if visual_pdi_threshold < 0:
+            parser.error("--visual-pdi-threshold deve ser não negativo")
+        if visual_pixel_threshold_mm <= 0:
+            parser.error("--visual-pixel-threshold-mm deve ser maior que zero")
         if visual_idle_patience is None:
-            visual_idle_patience = 2
+            visual_idle_patience = 3
         if visual_idle_patience <= 0:
             parser.error("--visual-idle-patience deve ser maior que zero")
 
@@ -200,7 +209,8 @@ def main():
                 max_passage_seconds=max_passage_seconds,
                 native_timestamps=args.native_timestamps,
                 visual_event_enabled=visual_event_enabled,
-                visual_mad_threshold=visual_mad_threshold,
+                visual_pdi_threshold=visual_pdi_threshold,
+                visual_pixel_threshold_mm=visual_pixel_threshold_mm,
                 visual_idle_patience=visual_idle_patience,
                 verbose=args.debug,
             )

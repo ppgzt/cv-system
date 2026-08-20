@@ -81,9 +81,10 @@ def make_agent(store, *, inbox=None, executor=maybeDeferred, publisher=None, rep
     agent = VisualEventAgent(
         aid=AID(name="visual@localhost:5007"),
         capture_agent_aid="capture@localhost:5003",
-        mad_threshold=10.0,
-        idle_patience_frames=2,
         pid="visual-test",
+        pdi_threshold=0.0875,
+        idle_patience_frames=2,
+        pixel_threshold_mm=200.0,
         frame_store=store,
         inbox=inbox,
         state_publisher=publisher,
@@ -99,7 +100,7 @@ class VisualEventAgentTests(unittest.TestCase):
     def test_visual_contract_round_trip_contains_metadata_but_no_array(self):
         store = FrameStore()
         event = visual_frame(
-            store, 0, "A", np.zeros((2, 2), dtype=np.uint16), capture_index=1
+            store, 0, "A", np.full((240, 320), 1500, dtype=np.uint16), capture_index=1
         )
 
         payload = visual_event_to_json(event)
@@ -117,11 +118,15 @@ class VisualEventAgentTests(unittest.TestCase):
             inbox=OrderedInbox(expected_seq=10),
             executor=executor,
         )
+        first_raw = np.full((240, 320), 1500, dtype=np.uint16)
+        second_raw = np.full((240, 320), 1500, dtype=np.uint16)
+        second_raw[100:150, 100:150] = 2000  # Variação de 500mm na ROI -> ACTIVE
+
         first = visual_frame(
-            store, 10, "A", np.zeros((2, 2), dtype=np.uint16), capture_index=1
+            store, 10, "A", first_raw, capture_index=1
         )
         second = visual_frame(
-            store, 11, "B", np.full((2, 2), 20, dtype=np.uint16), capture_index=2
+            store, 11, "B", second_raw, capture_index=2
         )
 
         agent.react(acl_visual(first))

@@ -17,7 +17,13 @@ from pade.core.agent import Agent
 from pade.misc.utility import display_message
 
 from domain.pipeline_events import EndPassageEvent, EndPipelineEvent
-from domain.visual_activity import VisualActivityDetector, readonly_view
+from domain.visual_activity import (
+    DEFAULT_IDLE_PATIENCE,
+    DEFAULT_PDI_THRESHOLD,
+    DEFAULT_PIXEL_THRESHOLD_MM,
+    VisualActivityDetector,
+    readonly_view,
+)
 from domain.visual_events import (
     VisualFrameEvent,
     VisualInputEvent,
@@ -40,13 +46,17 @@ VISUAL_ACTIVITY_HEADER = (
     "dataset_timestamp_ms",
     "depth_filename",
     "label",
-    "mad",
+    "pdi_score",
     "moving",
     "visual_state",
     "transition",
+    "is_invalid",
+    "p99_mm",
+    "fraction_ge_2500",
     "processing_time_ms",
     "frame_id",
     "is_trigger",
+    "mad",
 )
 
 
@@ -58,9 +68,10 @@ class VisualEventAgent(Agent):
         self,
         aid,
         capture_agent_aid: str,
-        mad_threshold: float,
-        idle_patience_frames: int,
         pid: str,
+        pdi_threshold: float = DEFAULT_PDI_THRESHOLD,
+        idle_patience_frames: int = DEFAULT_IDLE_PATIENCE,
+        pixel_threshold_mm: float = DEFAULT_PIXEL_THRESHOLD_MM,
         frame_store: FrameStore = FRAME_STORE,
         orchestrator_agent_aid: str | None = None,
         inbox: OrderedInbox[VisualInputEvent] | None = None,
@@ -78,8 +89,9 @@ class VisualEventAgent(Agent):
         self.frame_store = frame_store
         self.inbox = inbox or OrderedInbox()
         self.detector = detector or VisualActivityDetector(
-            mad_threshold=mad_threshold,
+            pdi_threshold=pdi_threshold,
             idle_patience_frames=idle_patience_frames,
+            pixel_threshold_mm=pixel_threshold_mm,
         )
         self.state_publisher = state_publisher
         self._defer_executor = defer_executor
@@ -176,14 +188,18 @@ class VisualEventAgent(Agent):
             capture_index=event.capture_index,
             elapsed_time=event.elapsed_time,
             dataset_timestamp_ms=event.dataset_timestamp_ms,
-            depth_filename=event.depth_filename,
-            mad=result.mad,
+            pdi_score=result.score,
             moving=result.moving,
             visual_state=result.visual_state,
             transition=result.transition,
             processing_time_ms=elapsed_ms,
+            depth_filename=event.depth_filename,
             frame_id=event.frame_id,
             is_trigger=is_trigger,
+            is_invalid=result.is_invalid,
+            p99_mm=result.p99_mm,
+            fraction_ge_2500=result.fraction_ge_2500,
+            mad=result.mad,
         )
 
     def _observation_succeeded(
@@ -205,11 +221,15 @@ class VisualEventAgent(Agent):
                     # Ground truth e persistido apenas para analise; ele nao
                     # faz parte do VisualStateEvent publicado online.
                     "label": event.label,
-                    "mad": observation.mad,
+                    "pdi_score": observation.pdi_score,
                     "moving": observation.moving,
                     "visual_state": observation.visual_state.value,
                     "transition": observation.transition,
+                    "is_invalid": observation.is_invalid,
+                    "p99_mm": observation.p99_mm,
+                    "fraction_ge_2500": observation.fraction_ge_2500,
                     "processing_time_ms": observation.processing_time_ms,
+                    "mad": observation.mad,
                 }
             )
             self.latest_state_event = observation
@@ -230,7 +250,7 @@ class VisualEventAgent(Agent):
                             "capture_index": observation.capture_index,
                             "elapsed_time": observation.elapsed_time,
                             "dataset_timestamp_ms": observation.dataset_timestamp_ms,
-                            "mad": observation.mad,
+                            "pdi_score": observation.pdi_score,
                             "moving": observation.moving,
                             "visual_state": observation.visual_state.value,
                             "transition": observation.transition,
@@ -238,6 +258,10 @@ class VisualEventAgent(Agent):
                             "depth_filename": observation.depth_filename,
                             "frame_id": observation.frame_id,
                             "is_trigger": observation.is_trigger,
+                            "is_invalid": observation.is_invalid,
+                            "p99_mm": observation.p99_mm,
+                            "fraction_ge_2500": observation.fraction_ge_2500,
+                            "mad": observation.mad,
                         })
                     )
                     self._safe_send(msg)
@@ -245,10 +269,11 @@ class VisualEventAgent(Agent):
                     self._safe_log(f"[ERROR] Failed to send visual state to orchestrator: {exc}")
 
             if observation.transition:
+                score_str = f"{observation.pdi_score:.4f}" if observation.pdi_score is not None else "None"
                 self._safe_log(
                     f"[VISUAL] passage={observation.passage_id} "
                     f"capture={observation.capture_index} "
-                    f"mad={observation.mad:.3f} "
+                    f"pdi={score_str} "
                     f"transition={observation.transition}"
                 )
         except Exception as exc:

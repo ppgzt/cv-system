@@ -89,7 +89,7 @@ class OrchestratorAgent(Agent):
                     capture_index=data["capture_index"],
                     elapsed_time=data["elapsed_time"],
                     dataset_timestamp_ms=data.get("dataset_timestamp_ms"),
-                    mad=data.get("mad"),
+                    pdi_score=data.get("pdi_score", data.get("mad")),
                     moving=data.get("moving"),
                     visual_state=VisualState(data["visual_state"]),
                     transition=data.get("transition"),
@@ -97,6 +97,10 @@ class OrchestratorAgent(Agent):
                     depth_filename=data.get("depth_filename"),
                     frame_id=data.get("frame_id"),
                     is_trigger=data.get("is_trigger", False),
+                    is_invalid=data.get("is_invalid", False),
+                    p99_mm=data.get("p99_mm"),
+                    fraction_ge_2500=data.get("fraction_ge_2500"),
+                    mad=data.get("mad"),
                 )
                 self.handle_visual_state(event)
             except Exception as exc:
