@@ -63,13 +63,14 @@ class TempMonitor(threading.Thread):
     def run(self):
         while self.running:
             temp = read_temperature()
-            temp_val = temp if temp is not None else 0.0
+            # Indisponibilidade é dado operacional, não temperatura zero.
+            temp_val = float(temp) if temp is not None else None
             row = [datetime.now().isoformat(), temp_val]
             with self._lock:
                 self._data.append(row)
             
             # Print matching the style of CPU/RAM monitors
-            print(f"TEMP: {temp_val:.1f} C")
+            print("TEMP: unavailable" if temp_val is None else f"TEMP: {temp_val:.1f} C")
             time.sleep(1)
 
     def stop(self):

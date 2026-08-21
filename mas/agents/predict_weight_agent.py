@@ -61,6 +61,7 @@ class PredictWeightAgent(Agent):
         verbose: bool = False,
         fps: float | None = None,
         capture_mode: str | None = None,
+        reports_dir: str = "infra/reports",
     ):
         super().__init__(aid=aid, debug=debug)
         if mode not in {"single", "batch"}:
@@ -78,6 +79,7 @@ class PredictWeightAgent(Agent):
         self.verbose = verbose
         self.fps = fps
         self.capture_mode = capture_mode
+        self.reports_dir = reports_dir
 
         self._defer_executor = defer_executor
         self._call_later = call_later or reactor.callLater
@@ -468,7 +470,7 @@ class PredictWeightAgent(Agent):
     def _save_metrics(self) -> None:
         if self._metrics_saved:
             return
-        reports_dir = f"infra/reports/{self.pid}"
+        reports_dir = os.path.join(self.reports_dir, self.pid)
         os.makedirs(reports_dir, exist_ok=True)
         metrics_path = os.path.join(reports_dir, "metrics.json")
         with open(metrics_path, "w", encoding="utf-8") as stream:

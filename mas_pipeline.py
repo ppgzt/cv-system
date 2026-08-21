@@ -17,6 +17,16 @@ SingleStream/Batch seguem intocados.
 import os
 import time
 
+from mas.experiment_config import (
+    DEFAULT_IDLE_PATIENCE,
+    DEFAULT_LOW_FPS,
+    DEFAULT_MEDIUM_FPS,
+    DEFAULT_PDI_THRESHOLD,
+    DEFAULT_PIXEL_THRESHOLD_MM,
+    DEFAULT_ROI_FRACTIONS,
+    DEFAULT_SELECTOR_THRESHOLD,
+)
+
 
 class MASStrategy:
     """Strategy Multi-Agent System data-driven por tag.
@@ -41,23 +51,33 @@ class MASStrategy:
         native_timestamps: bool = False,
         capture_timing_enabled: bool = True,
         visual_event_enabled: bool = False,
-        visual_pdi_threshold: float | None = None,
-        visual_pixel_threshold_mm: float = 200.0,
-        visual_idle_patience: int | None = None,
+        visual_pdi_threshold: float = DEFAULT_PDI_THRESHOLD,
+        visual_pixel_threshold_mm: float = DEFAULT_PIXEL_THRESHOLD_MM,
+        visual_idle_patience: int = DEFAULT_IDLE_PATIENCE,
+        visual_roi_fractions: tuple[float, float, float, float] = DEFAULT_ROI_FRACTIONS,
+        selector_threshold: float = DEFAULT_SELECTOR_THRESHOLD,
+        resource_thresholds=None,
+        resource_control_enabled: bool = False,
+        frame_selection_model: str = "infra/models/frame_selector.tflite",
+        reports_dir: str = "infra/reports",
         verbose: bool = False,
     ):
         if visual_event_enabled:
-            if visual_pdi_threshold is None or visual_pdi_threshold < 0:
+            if low_fps is None:
+                low_fps = DEFAULT_LOW_FPS
+            if medium_fps is None:
+                medium_fps = DEFAULT_MEDIUM_FPS
+            if visual_pdi_threshold < 0:
                 raise ValueError(
-                    "visual_pdi_threshold must be provided and non-negative"
+                    "visual_pdi_threshold must be non-negative"
                 )
             if visual_pixel_threshold_mm <= 0:
                 raise ValueError(
                     "visual_pixel_threshold_mm must be positive"
                 )
-            if visual_idle_patience is None or visual_idle_patience <= 0:
+            if visual_idle_patience <= 0:
                 raise ValueError(
-                    "visual_idle_patience must be provided and positive"
+                    "visual_idle_patience must be positive"
                 )
         self.pid = pid
         self.mode = mode
@@ -75,6 +95,12 @@ class MASStrategy:
         self.visual_pdi_threshold = visual_pdi_threshold
         self.visual_pixel_threshold_mm = visual_pixel_threshold_mm
         self.visual_idle_patience = visual_idle_patience
+        self.visual_roi_fractions = visual_roi_fractions
+        self.selector_threshold = selector_threshold
+        self.resource_thresholds = resource_thresholds
+        self.resource_control_enabled = resource_control_enabled
+        self.frame_selection_model = frame_selection_model
+        self.reports_dir = reports_dir
         self.verbose = verbose
 
     def run(self):
@@ -91,7 +117,7 @@ class MASStrategy:
 
         from mas.utils.animal_dataset import AnimalDataset
         from mas.infrastructure.frame_store import FRAME_STORE
-        from mas.agents.resource_manager_agent import ResourceManagerAgent
+        from mas.agents.resource_manager_agent import ResourceManagerAgent, ResourceThresholds
         from mas.agents.dataset_capture_agent import DatasetCaptureAgent
         from mas.agents.data_enhance_agent import DataEnhanceAgent
         from mas.agents.frame_selection import FrameSelectionAgent
@@ -156,7 +182,7 @@ class MASStrategy:
         rm_aid = aid("resource_manager_agent", 6)
 
         weight_model_path = "infra/models/sheep_weight_predictor.tflite"
-        selection_model_path = "infra/models/frame_selector.tflite"
+        selection_model_path = self.frame_selection_model
 
         # 5. Adapters (lógica de domínio compartilhada, paridade com baseline)
         enhance_adapter = DataEnhanceAdapter()
@@ -164,12 +190,15 @@ class MASStrategy:
         selection_adapter = FrameSelectionAdapter(
             suitable_window=None,
             model_path=selection_model_path,
+            threshold=self.selector_threshold,
         )
         inference_adapter = InferenceAdapter(weight_model_path)
 
         if self.low_fps is not None:
             condition = (
-                "pade_visual_gated"
+                "pade_resource_aware_visual_gated"
+                if self.resource_control_enabled
+                else "pade_visual_gated"
                 if self.visual_gated
                 else "pade_visual_adaptive"
             )
@@ -199,17 +228,23 @@ class MASStrategy:
             verbose=self.verbose,
             fps=predict_agent_fps,
             capture_mode=capture_mode_str,
+            reports_dir=self.reports_dir,
         )
 
 
         orchestrator_agent = None
         if self.visual_event_enabled or self.low_fps is not None:
             from mas.agents.orchestrator_agent import OrchestratorAgent
+            resource_stale_after_seconds = getattr(
+                self.resource_thresholds, "stale_after_seconds", 10.0,
+            )
             orchestrator_agent = OrchestratorAgent(
                 aid=orch_aid,
                 capture_agent_aid=capture_aid.name,
                 n_hold=self.selection_hold_n,
                 verbose=self.verbose,
+                resource_control_enabled=self.resource_control_enabled,
+                resource_stale_after_seconds=resource_stale_after_seconds,
             )
 
         wait_for_aids = [selection_aid.name, predict_aid.name]
@@ -260,14 +295,6 @@ class MASStrategy:
             verbose=self.verbose,
         )
 
-        resource_agent = ResourceManagerAgent(
-            aid=rm_aid,
-            pid=self.pid,
-            reports_dir="infra/reports",
-            debug=False,
-        )
-        resource_agent.ams = {"name": ams_host, "port": ams_port}
-
         visual_agent = None
         if self.visual_event_enabled:
             visual_agent = VisualEventAgent(
@@ -279,8 +306,10 @@ class MASStrategy:
                 pdi_threshold=self.visual_pdi_threshold,
                 pixel_threshold_mm=self.visual_pixel_threshold_mm,
                 idle_patience_frames=self.visual_idle_patience,
+                roi_fractions=self.visual_roi_fractions,
                 pid=self.pid,
                 frame_store=FRAME_STORE,
+                reports_dir=self.reports_dir,
             )
 
         telemetry = PadeTelemetrySession(
@@ -291,12 +320,28 @@ class MASStrategy:
             selection_inbox=selection_agent.inbox,
             enhance_inbox=enhance_agent.inbox,
             prediction_inbox=predict_agent.inbox,
+            reports_dir=self.reports_dir,
             capture_timing_enabled=self.capture_timing_enabled,
         )
+        if orchestrator_agent is not None:
+            orchestrator_agent.on_control_state_change = telemetry.record_control_state
         capture_agent.telemetry_context = telemetry.context
         capture_agent.capture_timing_recorder = telemetry.capture_timing_recorder
         selection_agent.telemetry_context = telemetry.context
         selection_agent.capture_timing_recorder = telemetry.capture_timing_recorder
+
+        resource_agent = ResourceManagerAgent(
+            aid=rm_aid,
+            pid=self.pid,
+            reports_dir=self.reports_dir,
+            orchestrator_agent_aid=(orch_aid.name if orchestrator_agent is not None else None),
+            thresholds=self.resource_thresholds or ResourceThresholds(),
+            prediction_backlog_provider=telemetry.prediction_backlog,
+            throttling_provider=telemetry.latest_throttling,
+            control_enabled=self.resource_control_enabled,
+            debug=False,
+        )
+        resource_agent.ams = {"name": ams_host, "port": ams_port}
 
         # 7. Hooks de shutdown: EndPipeline continua sendo o gatilho lógico;
         # estes callbacks apenas persistem observabilidade no shutdown global.

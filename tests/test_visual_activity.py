@@ -59,8 +59,8 @@ class VisualActivityDetectorTests(unittest.TestCase):
     def test_roi_slices_proportions(self):
         shape = (240, 320)
         r_slice, c_slice = roi_slices(shape, DEFAULT_ROI_FRACTIONS)
-        self.assertEqual((r_slice.start, r_slice.stop), (72, 168))
-        self.assertEqual((c_slice.start, c_slice.stop), (64, 256))
+        self.assertEqual((r_slice.start, r_slice.stop), (72, 162))
+        self.assertEqual((c_slice.start, c_slice.stop), (0, 320))
 
     def test_compute_pdi_score_zero_diff_and_component_coherence(self):
         shape = (240, 320)
@@ -71,7 +71,7 @@ class VisualActivityDetectorTests(unittest.TestCase):
         self.assertEqual(compute_pdi_score(a, b), 0.0)
 
         # Diferença < 200 mm (ruído sub-threshold)
-        b[72:168, 64:256] += 50
+        b[72:162, 0:320] += 50
         self.assertEqual(compute_pdi_score(a, b), 0.0)
 
         # Componente contígua alterada em >= 200 mm
@@ -239,7 +239,7 @@ class VisualActivityDetectorTests(unittest.TestCase):
                 curr[90:140, 100:150] = rng.integers(1800, 2200, size=(50, 50), dtype=np.uint16)
             else:
                 # Ruído leve sub-threshold (< 200 mm)
-                curr[72:168, 64:256] += rng.integers(0, 70, size=(96, 192), dtype=np.uint16)
+                curr[72:162, 0:320] += rng.integers(0, 70, size=(90, 320), dtype=np.uint16)
 
             res = runtime_detector.observe(curr)
             if res.is_invalid:

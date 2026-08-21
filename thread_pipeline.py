@@ -63,6 +63,7 @@ class ThreadPipeline:
         verbose: bool = False,
         native_timestamps: bool = False,
         capture_timing_enabled: bool = True,
+        frame_selection_model: str = "infra/models/frame_selector.tflite",
     ):
         self.pid = pid
         self.mode = mode
@@ -73,6 +74,7 @@ class ThreadPipeline:
         self.native_timestamps = native_timestamps
         self.verbose = verbose
         self.capture_timing_enabled = capture_timing_enabled
+        self.frame_selection_model = frame_selection_model
 
         if not self.native_timestamps and (self.fps is None or self.fps <= 0):
             raise ValueError("fps deve ser maior que zero no modo normal")
@@ -83,6 +85,31 @@ class ThreadPipeline:
 
     def _now(self) -> str:
         return datetime.now().isoformat()
+
+    def _run_worker_guarded(
+        self,
+        worker_name: str,
+        target,
+        args: tuple,
+        downstream_queue=None,
+    ) -> None:
+        """Evita que uma excecao de worker suprima o sentinel downstream."""
+        try:
+            target(*args)
+        except BaseException as exc:
+            self._log(
+                worker_name,
+                f"[FATAL] worker terminated unexpectedly: {exc}",
+            )
+            if downstream_queue is not None:
+                try:
+                    downstream_queue.put(None)
+                except Exception as sentinel_exc:
+                    self._log(
+                        worker_name,
+                        f"[FATAL] could not propagate shutdown sentinel: "
+                        f"{sentinel_exc}",
+                    )
 
     # ------------------------------------------------------------------ #
     # Capture (transplantado do DatasetCaptureBehaviour)
@@ -123,6 +150,16 @@ class ThreadPipeline:
             index.sort(key=lambda x: x["relative_time_ms"])
             times = np.array([x["relative_time_ms"] for x in index], dtype=float)
             frames = index
+
+            if not frames:
+                self._log(
+                    "capture_agent",
+                    f"[WARN] Animal {tag} possui simulation_index vazio.",
+                )
+                q1.put((_END_ANIMAL, tag, 0, None, None))
+                if telemetry_context is not None:
+                    telemetry_context.clear_capture_passage_id(tag)
+                continue
 
             end_ms = self._passage_end_ms(times)
             capture_schedule = build_fixed_fps_schedule(times, self.fps, end_ms)
@@ -612,8 +649,8 @@ class ThreadPipeline:
 
         # 2. Adapters (lógica de domínio compartilhada, paridade com baseline/PADE)
         enhance_adapter = DataEnhanceAdapter()
-        selection_adapter = FrameSelectionAdapter(suitable_window=None,
-                                                  model_path="infra/models/frame_selector.tflite")
+        selection_adapter = FrameSelectionAdapter(
+            suitable_window=None, model_path=self.frame_selection_model)
         inference_adapter = InferenceAdapter("infra/models/sheep_weight_predictor.tflite")
 
         self._log("ThreadPipeline", f"Iniciando pipeline de threads para PID: {self.pid}")
@@ -675,24 +712,36 @@ class ThreadPipeline:
             hardware_telemetry_monitor,
         )
 
+        capture_args = (
+            dataset,
+            animal_tags,
+            q1,
+            telemetry_context,
+            capture_timing_recorder,
+        )
+        select_args = (selection_adapter, q1, q2)
+        enhance_args = (enhance_adapter, q2, q3)
+        predict_args = (
+            inference_adapter,
+            q3,
+            len(animal_tags),
+            metrics,
+        )
         capture_t = threading.Thread(
-            target=self._capture_loop,
-            args=(
-                dataset,
-                animal_tags,
-                q1,
-                telemetry_context,
-                capture_timing_recorder,
-            ),
+            target=self._run_worker_guarded,
+            args=("capture_agent", self._capture_loop, capture_args, q1),
             name="capture", daemon=True)
         select_t = threading.Thread(
-            target=self._select_loop, args=(selection_adapter, q1, q2),
+            target=self._run_worker_guarded,
+            args=("frame_selection_agent", self._select_loop, select_args, q2),
             name="select", daemon=True)
         enhance_t = threading.Thread(
-            target=self._enhance_loop, args=(enhance_adapter, q2, q3),
+            target=self._run_worker_guarded,
+            args=("data_enhance_agent", self._enhance_loop, enhance_args, q3),
             name="enhance", daemon=True)
         predict_t = threading.Thread(
-            target=self._predict_loop, args=(inference_adapter, q3, len(animal_tags), metrics),
+            target=self._run_worker_guarded,
+            args=("predict_weight_agent", self._predict_loop, predict_args),
             name="predict", daemon=True)
 
         import psutil  # warmup do cpu_percent (igual baseline: primeira chamada = 0.0)

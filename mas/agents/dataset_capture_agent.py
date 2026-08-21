@@ -132,9 +132,17 @@ class DatasetCaptureBehaviour(Behaviour):
         self.last_capture: str | None = None
 
         self._current_rate = "LOW" if self.adaptive_mode else ("HIGH" if self.native_timestamps else "FIXED")
-        self._next_low_scheduled_ms = 0.0
+        self._next_sample_scheduled_ms = 0.0
         self._scheduled_call = None
         self._pending_low_frames: dict[str, FrameEvent] = {}
+        self._unavailable_visual_frames: set[str] = set()
+        # No fim temporal de uma passagem Visual-Gated, os frames LOW ja
+        # adquiridos ainda podem estar em processamento no VisualEventAgent.
+        # Esta flag congela somente a finalizacao dessa passagem ate que cada
+        # uma dessas decisoes seja resolvida; nao espera nenhum estagio
+        # downstream (Selection/Enhance/Prediction).
+        self._passage_finalization_pending = False
+        self._last_control_sequence = -1
 
     def on_start(self):
         super().on_start()
@@ -193,10 +201,13 @@ class DatasetCaptureBehaviour(Behaviour):
         self.first_capture = None
         self.last_capture = None
         self._pending_low_frames.clear()
+        self._unavailable_visual_frames.clear()
+        self._passage_finalization_pending = False
+        self._last_control_sequence = -1
 
         if self.adaptive_mode:
             self._current_rate = "LOW"
-            self._next_low_scheduled_ms = float(times[0]) if len(times) > 0 else 0.0
+            self._next_sample_scheduled_ms = float(times[0]) if len(times) > 0 else 0.0
 
         if self.telemetry_context is not None:
             self.telemetry_context.set_capture_passage_id(tag)
@@ -236,6 +247,9 @@ class DatasetCaptureBehaviour(Behaviour):
         self._schedule_next_event()
 
     def _schedule_next_event(self) -> None:
+        if self._passage_finalization_pending:
+            return
+
         if not self.adaptive_mode:
             if self._plan_index < len(self._current_plan.events):
                 capture_event = self._current_plan.events[self._plan_index]
@@ -266,11 +280,12 @@ class DatasetCaptureBehaviour(Behaviour):
         if self._current_rate == "HIGH":
             target_idx = self._source_cursor
         else:
-            # Modo LOW: encontra o primeiro frame com t >= next_low_scheduled_ms sem alterar _source_cursor
+            # LOW e MEDIUM usam o mesmo scheduler causal first_ge, cada um
+            # com seu proprio deadline.
             target_idx = self._source_cursor
             while target_idx < len(self._current_frames):
                 t = float(self._current_frames[target_idx]["relative_time_ms"])
-                if t >= self._next_low_scheduled_ms - 1e-5:
+                if t >= self._next_sample_scheduled_ms - 1e-5:
                     break
                 target_idx += 1
 
@@ -283,6 +298,13 @@ class DatasetCaptureBehaviour(Behaviour):
 
         frame = self._current_frames[target_idx]
         target_t_ms = float(frame["relative_time_ms"])
+        passage_end_ms = self._current_plan.end_timestamp_ms
+        if passage_end_ms is not None and target_t_ms > passage_end_ms:
+            self._schedule_at(
+                self._passage_start + self._current_plan.end_offset_s,
+                self._finish_passage,
+            )
+            return
         offset_s = (
             target_t_ms - self._current_plan.first_timestamp_ms
         ) / 1000.0
@@ -302,15 +324,22 @@ class DatasetCaptureBehaviour(Behaviour):
         self._schedule_next_event()
 
     def _capture_adaptive_event(self, target_idx: int) -> None:
-        if self._finished or target_idx >= len(self._current_frames):
+        # Um callback agendado antes de uma troca de taxa pode sobreviver ao
+        # cancelamento em implementacoes de scheduler mais simples. Nunca
+        # permita que ele volte nem repita um indice ja adquirido.
+        if (
+            self._finished
+            or target_idx < self._source_cursor
+            or target_idx >= len(self._current_frames)
+        ):
             return
 
         self._source_cursor = target_idx + 1
         frame = self._current_frames[target_idx]
         t_current = float(frame["relative_time_ms"])
 
-        if self._current_rate == "LOW" and self.low_fps is not None:
-            self._next_low_scheduled_ms = t_current + (1000.0 / self.low_fps)
+        if self._current_rate in {"LOW", "MEDIUM"}:
+            self._next_sample_scheduled_ms = t_current + (1000.0 / self._sampling_fps())
 
         self._emit_frame(frame, t_current)
         self._schedule_next_event()
@@ -400,22 +429,31 @@ class DatasetCaptureBehaviour(Behaviour):
         else:
             try:
                 self._send_pipeline_event(event)
-            except Exception:
+            except Exception as exc:
                 if visual_event is not None:
                     self._release_visual_lease_safely(visual_event.lease_id)
                 if self.capture_timing_recorder is not None:
                     self.capture_timing_recorder.discard_scheduled_event(frame_id)
-                raise
+                self.frame_store.discard(frame_id)
+                self._log_visual_error(
+                    f"[ERROR] Pipeline event publication failed for "
+                    f"frame_id={frame_id}: {exc}"
+                )
+                visual_event = None
 
         if visual_event is not None:
             try:
                 self._send_visual_event(visual_event)
             except Exception as exc:
                 self._release_visual_lease_safely(visual_event.lease_id)
+                self._unavailable_visual_frames.add(frame_id)
                 self._log_visual_error(
                     f"[ERROR] Visual event publication failed for "
                     f"frame_id={frame_id}: {exc}",
                 )
+        elif self.visual_gated and self._current_rate == "LOW":
+            # Nao ha resposta possivel se nem a lease/evento foi criado.
+            self._unavailable_visual_frames.add(frame_id)
 
         if self.verbose:
             display_message(
@@ -435,6 +473,7 @@ class DatasetCaptureBehaviour(Behaviour):
             return
 
         pending_event = self._pending_low_frames.pop(frame_id)
+        self._unavailable_visual_frames.discard(frame_id)
 
         if obs.is_trigger:
             # Trigger IDLE -> ACTIVE: encaminha o MESMO frame_id ao Selection
@@ -451,17 +490,36 @@ class DatasetCaptureBehaviour(Behaviour):
                     self.agent.aid.name,
                     f"[ERROR] Trigger frame forwarding failed for frame_id={frame_id}: {exc}",
                 )
-            # Upshift para capturas futuras
-            self._current_rate = "HIGH"
-            self._schedule_next_event()
         else:
             # Frame permaneceu IDLE: descarta entrada principal do FrameStore
             self.frame_store.discard(frame_id)
 
-    def handle_capture_control(self, target_rate: str, passage_id: str) -> None:
+        # Se o fim temporal ja foi atingido, a ultima decisao Visual libera
+        # somente a finalizacao logica.
+        if self._passage_finalization_pending:
+            if not self._pending_low_frames:
+                self._complete_passage()
+        # A observacao Visual resolve apenas o roteamento deste frame. Mudancas
+        # de taxa sao aplicadas exclusivamente por CaptureControl do Orchestrator.
+
+    def handle_capture_control(
+        self,
+        target_rate: str,
+        passage_id: str,
+        control_sequence: int | None = None,
+    ) -> None:
         """Processa comando de taxa vindo do Orchestrator."""
         if passage_id != self._current_tag:
             return
+
+        if target_rate not in {"LOW", "MEDIUM", "HIGH"}:
+            return
+        if target_rate == "MEDIUM" and self.medium_fps is None:
+            raise RuntimeError("MEDIUM requested without medium_fps configured")
+        if control_sequence is not None:
+            if control_sequence <= self._last_control_sequence:
+                return
+            self._last_control_sequence = control_sequence
 
         if target_rate != self._current_rate:
             previous = self._current_rate
@@ -471,21 +529,43 @@ class DatasetCaptureBehaviour(Behaviour):
                     self.agent.aid.name,
                     f"[CAPTURE RATE CHANGE] passage={passage_id}: {previous}->{target_rate}",
                 )
-            if target_rate == "LOW" and self.low_fps is not None and self._source_cursor < len(self._current_frames):
-                current_t = float(self._current_frames[max(0, self._source_cursor - 1)]["relative_time_ms"])
-                self._next_low_scheduled_ms = current_t + (1000.0 / self.low_fps)
+            if target_rate in {"LOW", "MEDIUM"} and self._current_frames:
+                current_idx = max(0, self._source_cursor - 1)
+                current_t = float(self._current_frames[current_idx]["relative_time_ms"])
+                self._next_sample_scheduled_ms = current_t + (1000.0 / self._sampling_fps())
             self._schedule_next_event()
+
+    def _sampling_fps(self) -> float:
+        if self._current_rate == "LOW" and self.low_fps is not None:
+            return self.low_fps
+        if self._current_rate == "MEDIUM" and self.medium_fps is not None:
+            return self.medium_fps
+        raise RuntimeError(f"sampling FPS unavailable for rate={self._current_rate}")
 
     def _finish_passage(self) -> None:
         if self._finished or self._current_tag is None:
             return
 
-        tag = self._current_tag
+        # Nao descarte um frame LOW que ja foi adquirido e enviado ao Visual:
+        # sua resposta ainda pode ser o trigger que deve seguir ao Selection.
+        # Esta espera e estritamente local a essas observacoes pendentes.
+        for frame_id in self._unavailable_visual_frames:
+            self._pending_low_frames.pop(frame_id, None)
+            self.frame_store.discard(frame_id)
+        self._unavailable_visual_frames.clear()
+        if self.visual_gated and self._pending_low_frames:
+            self._passage_finalization_pending = True
+            return
 
-        # Limpeza defensiva de frames pendentes não admitidos
-        for fid in self._pending_low_frames:
-            self.frame_store.discard(fid)
-        self._pending_low_frames.clear()
+        self._complete_passage()
+
+    def _complete_passage(self) -> None:
+        """Emite o fim logico somente apos resolver frames LOW pendentes."""
+        if self._finished or self._current_tag is None:
+            return
+
+        tag = self._current_tag
+        self._passage_finalization_pending = False
 
         event = EndPassageEvent(
             stream_seq=0,
@@ -709,7 +789,11 @@ class DatasetCaptureAgent(Agent):
                 target_rate = data["target_rate"]
                 passage_id = data["passage_id"]
                 if hasattr(self, "capture_behaviour"):
-                    self.capture_behaviour.handle_capture_control(target_rate, passage_id)
+                    self.capture_behaviour.handle_capture_control(
+                        target_rate,
+                        passage_id,
+                        data.get("control_sequence"),
+                    )
             except Exception as exc:
                 display_message(
                     self.aid.name,

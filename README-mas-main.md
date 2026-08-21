@@ -1,323 +1,207 @@
-# `mas-main.py` — Pipeline MAS data-driven por tag
+# Runtime experimental PIBIC — Raspberry Pi 5
 
-Entry point do pipeline de pesagem de ovinos via Sistema Multi-Agente (PADE +
-Twisted), com **captura data-driven**: os frames depth são lidos diretamente do
-dataset real em `data/exp1`, simulando uma câmera real definida por **FPS**.
-
-Este é o pipeline **novo** e paralelo ao `main.py` / `domain/pipelines.py`
-(baseline `SingleStream`/`Batch` e o `MASStrategy` antigo seguem intocados e
-utilizáveis). O `mas-main.py` não passa pelo `main.py` — ele instancia
-`MASStrategy` de `mas_pipeline.py`.
-
----
-
-## 1. Visão geral
-
-O fluxo dos agentes é uma cadeia linear (ontologias FIPA-ACL INFORM):
-
-```
-DatasetCaptureAgent  ──frame-capture──▶  FrameSelectionAgent  ──frame-selected──▶  DataEnhanceAgent  ──frame-enhanced──▶  PredictWeightAgent
-        │                                       │
-        └────────── passage-complete ──────────▶│
-                                                └────────── batch-ready ──────────▶ PredictWeightAgent
-```
-
-- **`DatasetCaptureAgent`** — lê os frames depth reais de `DEPTH/<tag>/`,
-  ritmados por FPS (nearest-neighbor no `relative_time_ms`), e publica apenas
-  metadados leves (a imagem vai para um buffer em memória, não na mensagem).
-- **`FrameSelectionAgent`** — roda o seletor TFLite no depth **raw**; encaminha
-  só os frames *suitable* ao enhance e descarta o resto (liberando o buffer).
-- **`DataEnhanceAgent`** — realça o frame *suitable* (só ~os que passaram) e
-  sobrescreve o raw no buffer.
-- **`PredictWeightAgent`** — roda o regressor de peso TFLite no frame
-  enhanced; agrega por animal e, ao finalizar todos, salva `metrics.json` e
-  para o reator.
-- **`ResourceManagerAgent`** — monitora CPU/RAM em background e escreve
-  `cpu.csv` / `mem.csv`; para no shutdown do reator.
-
-A imagem (pesada) trafega por um **buffer em memória** (`FRAME_BUFFER`,
-chaveado por `frame_id`); as mensagens FIPA-ACL carregam só JSON leve
-(`frame_id`, `animal_id`, `elapsed_time`, `label`, …).
-
----
-
-## 2. Modelo de captura (data-driven, FPS-paced)
-
-Cada animal tem, em `data/exp1/animal-tags/<tag>/simulation_index.json`, uma
-lista de frames reais com `relative_time_ms` (tempo de captura real dentro da
-passagem, irregular — nativo ~10 fps), `depth_filename` e `label`
-(ground-truth ∈ {`background`, `parcial`, `suited`, `ruido`}).
-
-O `DatasetCaptureAgent` simula uma câmera real definida por **FPS**:
-
-1. Um `TimedBehaviour` (Twisted) **pulsa a cada `1/FPS` segundos de wall-clock**.
-2. Mantém um **relógio virtual** em *ms* que avança `1000/FPS ms` por pulso,
-   iniciando em `t0` do animal (primeiro `relative_time_ms`).
-3. A cada pulso, captura o frame cujo `relative_time_ms` é o **mais próximo**
-   do relógio virtual (nearest-neighbor, `np.searchsorted`, O(log n)):
-   - **FPS < frequência nativa** → alguns frames reais nunca são capturados
-     (perda de frames, desejada na simulação).
-   - **FPS > frequência nativa** → o mesmo frame real é capturado mais de uma
-     vez (duplicação, desejada na simulação).
-4. A **duração da passagem** de cada animal vem do dado (`tmax` = maior
-   `relative_time_ms`); não há `passage_time`/`arrival_time` fixos. Quando o
-   relógio virtual ultrapassa `tmax`, o agente emite `passage-complete` e avança
-   para o próximo animal (ordem alfabética da tag), **pré-carregando** o
-   `simulation_index.json` do próximo na memória.
-5. Ao terminar o último animal, a captura para; o reator para só depois que o
-   `PredictWeightAgent` finaliza todos (garantia de que as predições são salvas).
-
-> Por que wall-clock e não "o mais rápido possível": preserva o ritmo real de
-> uma câmera, mantendo válidas as medições de throughput/latência e o teto de
-> capacidade (stall λ>μ) do MAS. Veja [§10. Capacidade](#10-capacidade).
-
-### 2.1. Reprodução pelos timestamps originais (engine `thread`)
-
-Para reproduzir cada passagem usando todos os frames e os intervalos originais
-de `relative_time_ms`, sem nearest-neighbor, use:
+O entrypoint experimental oficial é:
 
 ```bash
-python mas-main.py mas-single --native-timestamps
-python mas-main.py mas-single --native-timestamps --num-animals 3
+python mas-main.py --engine pade --mode <modalidade>
 ```
 
-Esse modo está disponível somente no engine padrão `thread`. O `fps` pode ser
-omitido; se for informado por compatibilidade, não participa do agendamento.
-Cada frame do `simulation_index.json` é emitido uma única vez, usando deadlines
-baseados em relógio monotônico. O pipeline mantém as mesmas quatro threads e as
-mesmas filas do modo FPS; nenhum worker adicional é criado. O modo original
-continua sendo ativado pelos comandos existentes, por exemplo:
+`main.py`, `domain/pipelines.py` e `mas/agents/capture_agent.py` são caminhos
+históricos. Permanecem para reprodução, mas não são o runtime atual nem devem
+aparecer no comando de deploy.
+
+## Ambiente e modelos
+
+Use Raspberry Pi 5 16 GB, Python 3.13, o virtualenv `.venv`, TensorFlow Lite,
+Twisted, PADE, NumPy/SciPy, psutil e python-dotenv. Configure AMS/PADE em `.env`
+por `SMA_AMS_HOST`, `SMA_AMS_PORT`, `SMA_AGENT_HOST` e `SMA_AGENT_BASE_PORT`.
+O dataset padrão é `data/exp1` (`--data-root` permite outro cohort).
 
 ```bash
-python mas-main.py mas-single 5 3
+source .venv/bin/activate
 ```
 
-Os **metadados** entre agentes (payload `frame-capture`) passam a carregar:
-`frame_id`, `animal_id` = **tag**, `frame_index`, `elapsed_time` (relógio
-virtual ms ou timestamp original), `label` (ground-truth) e `depth_filename`.
-No modo nativo, `dataset_timestamp_ms` também registra explicitamente o
-`relative_time_ms` usado no agendamento.
+Os TFLite são deliberadamente ignorados pelo Git e devem ser copiados por SCP
+para `infra/models/` antes da execução. Não adicione os modelos ao Git/LFS.
 
-### Single vs Batch
-- **`mas-single`**: cada frame *suitable* é inferido **imediatamente**
-  (`PredictWeight` com batch=1). Latência por frame, peso por frame no log.
-- **`mas-batch`**: os frames *suitable* são acumulados por animal; ao receber
-  `batch-ready`, o `PredictWeight` roda **uma** inferência em lote sobre todos.
-  Menos overhead, peso só ao final do animal.
+| Arquivo | Papel | SHA256 |
+|---|---|---|
+| `frame_selector.tflite` | selector final v3 ROI10 | `f0886d0f01a1b48ccb836da7ea139caa58f0e0e445ee27ef2ec2a07abd9adca7` |
+| `frame_selector_passage_level_antigo.tflite` | selector histórico v2 grouped | `c3ce562b0945b12d168ec4af0654ed332d3941354bbd1c2bce77f89227e1544a` |
+| `frame_selector_image_level.tflite` | selector histórico image-level | `2d2b8a2ddde53fa4738d0d93b6a1a67c54e925999c8c8bdc9df7e010589ccfbf` |
+| `sheep_weight_predictor.tflite` | regressor de peso | `15b9d310c8deffc4629a107b62e889d13c8fb55186759c595ee7b0c192e50d4a` |
 
-O critério de **término** é por conjunto: o `PredictWeightAgent` conta
-finalizações até atingir o total de animais do rebanho (`herd_size` =
-quantidade de tags), robusto a qualquer ordem de finalização.
-
----
-
-## 3. Pré-requisitos
-
-- Python 3.13 + venv do projeto (`.venv`), com `tensorflow`, `twisted`, `pade`,
-  `scikit-image`, `psutil`, `python-dotenv`, `click`, `numpy`.
-- Dataset em `data/exp1`:
-  - `animal-tags/<tag>/simulation_index.json`
-  - `DEPTH/<tag>/<depth_filename>` — PNG depth **uint16 mm** (shape `240×320`).
-    O loader **não reescala**: o seletor clipa em 4000 e o DataEnhance em 1950
-    (esperam milímetros crus, igual ao treino).
-- Modelos em `infra/models/`:
-  - `frame_selector.tflite` (seletor, 4 classes, decisão `prob(class0) > 0.5`).
-  - `sheep_weight_predictor.tflite` (regressor de peso, entrada enhanced `300×300`).
-- Arquivo `.env` (veja `.env.example`): `SMA_AMS_HOST`, `SMA_AMS_PORT`,
-  `SMA_AGENT_HOST`, `SMA_AGENT_BASE_PORT`.
-
----
-
-## 4. Uso
-
-```
-python mas-main.py <mode> <fps> [num_animals] [max_passage_seconds] [--debug]
-```
-
-| Argumento             | Obrigatório | Descrição                                                        |
-|-----------------------|-------------|------------------------------------------------------------------|
-| `mode`                | sim         | `mas-single` \| `mas-batch`                                       |
-| `fps`                 | sim         | taxa de captura simulada (frames por segundo)                    |
-| `num_animals`         | não         | quantas tags processar (default: **todas**, em ordem alfabética) |
-| `max_passage_seconds` | não         | cap do span de cada animal em segundos (default: sem cap)        |
-| `--debug`             | não         | modo verbose + grava todo o log em `debug.log`                   |
-
-> Os dois posicionais opcionais também aceitam nomes longos via argparse
-> (`num_animals`, `max_passage_seconds`); `--debug` é flag.
-
-### Exemplos
+No Pi/Linux:
 
 ```bash
-# 3 animais a 5 fps (teste rápido)
-python mas-main.py mas-single 5 3
-
-# Todos os animais a 10 fps, em modo batch
-python mas-main.py mas-batch 10
-
-# 3 animais com log detalhado (label real × classificação × peso)
-python mas-main.py mas-single 5 3 --debug
-
-# Todos os animais, cap de 30s por animal (rede de segurança p/ anomalias), debug
-python mas-main.py mas-single 5 192 30 --debug
-
-# Apenas ajuda
-python mas-main.py --help
+sha256sum infra/models/*.tflite
 ```
 
----
+No macOS: `shasum -a 256 infra/models/*.tflite`.
 
-## 5. Modo `--debug`
+## As cinco modalidades oficiais
 
-Além do log normal, o `--debug`:
+| Modalidade | Visual adaptive | Visual gate | Resource cap | Scheduler |
+|---|---:|---:|---:|---|
+| `original-timing` | OFF | OFF | OFF | timestamps originais |
+| `fixed-fps` | OFF | OFF | OFF | fixed-FPS histórico |
+| `visual-adaptive` | ON | OFF | OFF | causal LOW/MEDIUM/HIGH |
+| `visual-gated` | ON | ON | OFF | adaptive + gating |
+| `resource-aware-visual-gated` | ON | ON | ON | Visual-Gated + resource cap |
 
-1. **Salva TODO o log** em `infra/reports/<pid>/debug.log` via um *Tee* de
-   stdout/stderr (captura mensagens dos agentes, prints e tracebacks do
-   reator). O `pid` é gerado como `<mode>_<ISO timestamp>`.
-2. Liga o **log verbose por frame** com a trilha de inspeção:
-
-   - **Captura**: `[CAPTURE] animal=03mf idx=5 t=1234.0ms label=suited -> frame_selection_agent`
-   - **Seleção** (label real × decisão do seletor × probabilidade):
-     `[SELECT] frame_id=abc animal=03mf label=suited -> SUITABLE (p=0.9164)`
-     ou `-> DISCARDED (p=0.0000)`.
-   - **Resumo do seletor por animal** (ao finalizar cada animal):
-     `[SELECT-SUMMARY] animal=03mf total=N | label 'suited' captados=K (TP=.., FN=..) | não-suited marcados suitable (FP)=..`
-   - **Predição**: `[PREDICTION] animal_id=03mf frame_id=abc label=suited weight=16.0064 kg`
-   - **Final do animal**: `[FINAL] Animal 03mf: n_suitable=2 | labels_dos_suitable={'suited':2} | peso_medio=16.1000 kg`
-
-Sem `--debug`, o comportamento e os logs são enxutos (como antes).
-
----
-
-## 6. Saídas
-
-Tudo em `infra/reports/<pid>/`:
-
-| Arquivo        | Conteúdo                                                                 |
-|----------------|--------------------------------------------------------------------------|
-| `metrics.json` | Por animal (chave = **tag**): timestamps, `total_of_images`, `suitable_images`, `weight_prediction_final` e `imgs{}` (com `label` por frame quando disponível). |
-| `cpu.csv`      | Amostras de uso de CPU por core (tempo real).                            |
-| `mem.csv`      | Amostras de memória (total/used/percent/…).                              |
-| `debug.log`    | Só com `--debug`: log completo da execução.                             |
-
-> **Atenção:** `metrics.json` agora é indexado pela **tag** (ex. `"03mf"`) e
-> não mais por índice inteiro (`"1","2"`). A comparação com runs antigas não é
-> posicional, mas o conteúdo por animal é paralelo.
-
----
-
-## 7. Estrutura de dados esperada
-
-```
-data/exp1/
-├── animal-tags/
-│   ├── 03mf/simulation_index.json     # [{relative_time_ms, depth_filename, rgb_filename, label}, ...]
-│   ├── 0014/simulation_index.json
-│   └── 0014s2/simulation_index.json   # 2ª passagem do 0014 (split, t rezeroado)
-└── DEPTH/
-    ├── 03mf/<depth_filename>.png      # uint16 mm, 240×320
-    ├── 0014/<depth_filename>.png
-    └── 0014s2/<depth_filename>.png
+```bash
+python mas-main.py --engine pade --mode original-timing
+python mas-main.py --engine pade --mode fixed-fps --fps 5
+python mas-main.py --engine pade --mode visual-adaptive
+python mas-main.py --engine pade --mode visual-gated
+python mas-main.py --engine pade --mode resource-aware-visual-gated
 ```
 
----
+`fixed-fps` exige `--fps`; não há FPS implícito. LOW=4 FPS, MEDIUM=7 FPS e
+HIGH mantém o timing nativo/original do trace, sem upsampling artificial.
 
-## 8. Considerações práticas
+## Configuração
 
-- **Anomalias de dado**: o `0014` original tinha `tmax` ≈ 17 min (duas
-  passagens do mesmo animal mescladas); foi dividido em `0014` + `0014s2`. Se
-  surgir outra tag com span anômalo (>120 s), o agente emite um `[WARN]` — use
-  `max_passage_seconds` para capar.
-- **`num_animals`**: para iteração rápida, processe poucos animais
-  (ex. `... 5 3`). Default = todas as tags (atualmente 193).
-- **Threads/cores**: `TF_INTRA_OP`/`TF_INTER_OP_PARALLELISM_THREADS=1` (em
-  `mas-main.py`) e o pool do Twisted em `minthreads=2, maxthreads=4`
-  (`mas_pipeline.py`, ajustado para o Pi 5, 4 cores). Os modelos TFLite rodam
-  com `num_threads=2` (XNNPACK CPU).
-- **Concorrência de inferência serializada**: seletor e regressor de peso são
-  despachados via `deferToThread`, mas guardados por um **`DeferredSemaphore(1)`**
-  compartilhado (1 inferência por vez) — em `PredictWeightAgent` e
-  `FrameSelectionAgent`. Isso impede que vários animais prontos disparem
-  inferências TF/TFLite concorrentes que se atropelariam nos 4 cores
-  (*thrashing*, que era o que travava o pipeline antigo sem semáforo em
-  ≥2 fps). Veja a [§10. Capacidade e concorrência](#10-capacidade).
-- **Capacidade (teto de FPS)**: o limite operacional depende do hardware e do
-  modelo — os números antigos (1.5/2 fps) medidos no pipeline **pré-semáforo**
-  (Keras, threadpool=30) **estão obsoletos** e devem ser re-medidos no código
-  atual (semáforo + TFLite). Veja [§10](#10-capacidade) e o documento de
-  análise em `logs/docs/analise-fps-capacidade.md`.
-- **dtype depth**: uint16 mm — não reescalar. O loader (`AnimalDataset`) usa
-  `skimage.io.imread` preservando o tipo.
-- **Hardware**: CPU only (M1 para teste, RPi 5 para deploy) — sem GPU.
+Defaults autoritativos: `mas/experiment_config.py`. CLI sobrescreve valores por
+run sem editar múltiplos arquivos; expor uma opção não altera o protocolo.
 
----
+| Parâmetro | Default | Unidade | Modos |
+|---|---:|---|---|
+| `--mode` | obrigatório | — | todos |
+| `--fps` | obrigatório em fixed | fps | fixed-fps |
+| `--low-fps`, `--medium-fps` | 4.0, 7.0 | fps | visuais |
+| `--selector-threshold` | 0.5 | prob. | todos |
+| selector ROI | y/x 10–90% | fração | todos, congelado v3 |
+| `--visual-pdi-threshold` | 0.08747855917667238 | PDI | visuais |
+| `--visual-roi` | `0.30 0.675 0.00 1.00` | fração | visuais |
+| `--visual-idle-patience` | 3 | observações | visuais |
+| visual depth diff | 200 | mm | visuais |
+| quality p99 / fraction | 2230 / 0.0027473958333333335 | mm / fração | visuais |
+| `--resource-warning-temperature` | 75.0 | °C | resource-aware |
+| `--resource-critical-temperature` | 80.0 | °C | resource-aware |
+| `--resource-warning-backlog` | 7 | eventos | resource-aware |
+| `--resource-stale-after-seconds` | 10.0 | s | resource-aware |
+| `--aggregation-mode` | single | — | todos |
+| `--num-animals`, `--data-root` | todos / `data/exp1` | — | todos |
+| `--output-dir`, `--run-id`, `--repetition` | `infra/reports` / timestamp / vazio | — | todos |
 
-## 9. Diferenças vs `main.py` (antigo)
+Exemplo:
 
-| Aspecto                | `main.py` / `MASStrategy` antigo                | `mas-main.py` / `mas_pipeline.py`                  |
-|------------------------|--------------------------------------------------|----------------------------------------------------|
-| Captura                | `sample.png` repetido, `passage/arrival_time` fixos | frames depth reais por tag, FPS-paced (nearest-neighbor) |
-| Identidade do animal   | inteiro `1..herd_size`                           | **tag** string (ex. `03mf`)                         |
-| Duração da passagem    | parâmetro `passage_time`                         | derivada do dado (`tmax`)                          |
-| Label nos metadados    | —                                                | **sim** (ground-truth viaja no payload)            |
-| Término                | `animal_id == herd_size`                         | conjunto de finalizações = total de tags           |
-| CLI                    | `strategy herd passage arrival fsel fsel_win`    | `mode fps [num_animals] [max_passage] [--debug]`   |
+```bash
+python mas-main.py --engine pade --mode resource-aware-visual-gated \
+  --run-id pibic-pi5-001 --repetition 1 --num-animals 3 \
+  --output-dir infra/reports
+```
 
-Os agentes `FrameSelectionAgent`, `DataEnhanceAgent` e `PredictWeightAgent`
-são **compartilhados**; apenas `DatasetCaptureAgent` é novo e o critério de
-término foi tornado compatível com ambos (int e tag-string).
+## Resource Management
 
----
+Só `resource-aware-visual-gated` permite que ResourceState limite aquisição.
+CPU e RAM continuam em telemetria/blackboard, mas não classificam estado.
 
-<a id="10-capacidade"></a>
-## 10. Capacidade, concorrência e limites de FPS
+```text
+throttling atual ativo                 -> CRITICAL -> máximo LOW
+temperatura >= 80 °C                   -> CRITICAL -> máximo LOW
+temperatura >= 75 °C                   -> WARNING  -> máximo MEDIUM
+prediction_backlog >= 7                -> WARNING  -> máximo MEDIUM
+outro caso                             -> SAFE     -> sem cap adicional
+```
 
-> Análise completa em `logs/docs/analise-fps-capacidade.md`. Esta seção resume
-> o que é **fato no código atual** (verificável) e o que ainda **precisa ser
-> re-medido**.
+`prediction_backlog` é a ocupação da borda **Preprocessing → Prediction**
+(`PredictWeightAgent.inbox`), a mesma métrica
+`preprocessing_to_prediction_qsize` em `queue_telemetry.csv`. Ela contém apenas
+trabalho aceito e pré-processado aguardando Prediction; não soma filas upstream
+nem inclui inferência já em execução. É lida na publicação Resource, a cada
+aproximadamente 5 s.
 
-### Por que existe um teto de FPS (e ele não é da câmera)
+`vcgencmd get_throttled` é coletado pelo monitor de hardware com timeout de
+0,5 s. Telemetria preserva raw/máscara/flags. Qualquer flag *atual* de
+undervoltage, frequency-capped, throttled ou soft-temperature-limit é CRITICAL.
+Se o comando faltar/falhar/expirar, o sinal fica `None`/unavailable — nunca
+False silenciosamente — e o Resource Agent não cai.
 
-Aumentar o FPS **não** aumenta o número de animais processados por minuto. A
-chegada de animais (λ) é ditada pelo ritmo da passagem (cada animal tem um
-`tmax` no dado), e o serviço por animal (μ) cresce com o FPS — mais frames
-capturados → mais `enhance`/`select`/`predict` por animal. A partir de certo
-FPS, **λ > μ** e o backlog cresce sem parar (stall), o que leva o watchdog a
-forçar a finalização dos animais restantes como *placeholders* (sem predição
-real). É por isso que a captura é **wall-clock paced** (não "o mais rápido
-possível"): preserva o ritmo real e mantém a medição de throughput válida.
+Cada estado tem sequência e timestamp monotônico. Após mais de 10 s sem amostra
+fresca, o Orchestrator congela conservadoramente a taxa/cap efetiva e não permite
+novo upshift até uma amostra fresca. Resource Manager nunca envia FPS ao Capture.
 
-### Como o código atual controla a concorrência (evita o thrashing)
+## Outputs, shutdown e deploy
 
-Versões antigas do MAS disparavam uma inferência `deferToThread` por animal
-**sem limite de concorrência** — quando vários animais ficavam prontos juntos
-(em ≥2 fps), dezenas de threads TF/TFLite competiam nos 4 cores, e a inferência
-degradava de ~2s para até ~50s (*thrashing*). O código atual corrige isso com:
+Cada execução salva em `<output-dir>/<run-id>/`: `metrics.json`, `report.md`,
+`capture_timing.csv`, `queue_telemetry.csv`, `hardware_telemetry.csv`,
+`control_activity.csv`, `cpu.csv`, `mem.csv`, `temp.csv`, e nos modos visuais
+`visual_activity.csv`. `--debug` adiciona `debug.log`.
 
-- **`DeferredSemaphore(1)`** em `PredictWeightAgent` (linhas 296/325) e
-  `FrameSelectionAgent` (linha 193): **no máximo uma inferência de cada tipo por
-  vez**, independentemente de quantos animais estejam prontos.
-- **TFLite/XNNPACK** com `num_threads=2` (em vez de Keras multi-thread).
-- **`TF_INTRA/INTER_OP_PARALLELISM_THREADS=1`** e pool do Twisted em
-  `minthreads=2, maxthreads=4`.
+Finalize com `Ctrl-C` e aguarde o drain de END/Prediction; não mate o processo
+antes da finalização se precisar de resultados completos.
 
-Com isso, a inferência sob carga degrada de forma controlada (próximo do
-linear), não catastrófica.
+Sequência recomendada no Raspberry:
 
-### ⚠️ Números de capacidade obsoletos — re-medir
+```bash
+git pull
+source .venv/bin/activate
+# instalar/sincronizar dependências quando necessário
+# copiar os quatro TFLite por SCP para infra/models/ quando necessário
+sha256sum infra/models/*.tflite
+python mas-main.py --engine pade --mode resource-aware-visual-gated --num-animals 3 --run-id smoke-pi5
+# revisar CSVs/metrics; então executar a coorte planejada
+```
 
-Os runs em `logs/mas-batch-1_5fps-100a/` (100/100) e
-`logs/mas-batch-2fps-100a/` (58/100 reais + 42 *placeholders*) são do pipeline
-**pré-semáforo, em Keras, threadpool=30**. Eles **não** representam o
-comportamento do `mas-main.py` atual. Antes de concluir qualquer teto de FPS
-para o deploy no Pi 5, **re-meça** com o código atual (semáforo + TFLite),
-provavelmente o 2 fps passa a ser viável onde antes colapsava.
+Antes da coorte, confirme no Pi `vcgencmd get_throttled`, AMS/PADE e shutdown.
 
-### Critério para novas medições
+## Scripts operacionais no Raspberry
 
-- Varre FPS ∈ {1, 1.5, 2, 3, …} e confere se todos os animais finalizam com
-  predição **real** (sem *placeholders* do watchdog).
-- Monitore `mem.csv`/`cpu.csv` e o `queue_depth` (se disponível): o sistema
-  está em λ ≤ μ enquanto o backlog drena no fim; está em λ > μ quando o
-  `frame_buffer` cresce monotonicamente e o watchdog dispara.
-- Reporte o FPS máximo em que **100% dos animais** têm peso real como o teto
-  operacional daquela configuração (hardware + modelo + semáforo).
+Os scripts usam somente o entrypoint oficial, descobrem a raiz do projeto a
+partir do próprio arquivo e exigem Python 3.13 no `.venv`. Dê permissão uma vez:
+
+```bash
+chmod +x scripts/smoke_raspberry.sh scripts/pilot_5_modes_raspberry.sh
+```
+
+Smoke curto (três primeiras tags da ordem oficial do dataset; a CLI atual não
+aceita filtrar tags individuais):
+
+```bash
+./scripts/smoke_raspberry.sh
+```
+
+Ele exige os dois modelos ativos, valida seus SHA256 por padrão, exige
+`vcgencmd`, registra `measure_temp`/`get_throttled`, executa apenas
+`resource-aware-visual-gated --num-animals 3` e escreve em
+`results/smoke_raspberry_<timestamp>/`. Para desabilitar apenas a conferência de
+hash em uma investigação local, use `VERIFY_MODEL_SHA256=0`; isso não é
+recomendado para o piloto.
+
+Piloto ordenado, uma execução do cohort oficial por modalidade:
+
+```bash
+./scripts/pilot_5_modes_raspberry.sh
+FIXED_FPS=5 ./scripts/pilot_5_modes_raspberry.sh
+```
+
+Os resultados ficam em `results/pilot_5_modes_<timestamp>/01_original_timing`
+até `05_resource_aware_visual_gated`, cada um com `run.log`, além de
+`pilot.log` com o cooldown. Antes e depois de
+cada run o script registra timestamp, modo, temperatura, `get_throttled`, commit
+e hostname. Em qualquer falha ele para e preserva os logs.
+
+Entre as primeiras quatro execuções há cooldown obrigatório de 180 s. Depois,
+o script só continua quando `measure_temp` for estritamente menor que 50 °C;
+reconfere a cada 60 s. Após 600 s ele apenas emite warning e continua esperando:
+10 minutos não autorizam iniciar o próximo modo quente. Ajustes explícitos são
+`COOLDOWN_MIN_SECONDS`, `COOL_TEMP_C`, `RECHECK_SECONDS` e
+`COOLDOWN_EXPECTED_MAX_SECONDS`. Falha ou parsing inválido de `measure_temp`
+interrompe o piloto.
+
+Os dois scripts possuem `DRY_RUN=1` para validar a montagem de paths/comandos
+sem requerer Pi, modelos ou `vcgencmd`:
+
+```bash
+DRY_RUN=1 ./scripts/smoke_raspberry.sh
+DRY_RUN=1 ./scripts/pilot_5_modes_raspberry.sh
+```
+
+Exemplo de cópia manual dos modelos, sem fixar usuário/IP:
+
+```bash
+scp infra/models/frame_selector.tflite <user>@<raspberry>:/caminho/do/projeto/infra/models/
+scp infra/models/sheep_weight_predictor.tflite <user>@<raspberry>:/caminho/do/projeto/infra/models/
+```

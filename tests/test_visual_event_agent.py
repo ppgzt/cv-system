@@ -54,6 +54,7 @@ def visual_frame(store, seq, frame_id, raw, passage="N", capture_index=None):
         dataset_timestamp_ms=float(seq * 100),
         depth_filename=f"{frame_id}.png",
         label="suited",
+        frame_id=frame_id,
     )
 
 
@@ -77,10 +78,19 @@ def acl_pipeline(event):
     return message
 
 
-def make_agent(store, *, inbox=None, executor=maybeDeferred, publisher=None, reports_dir=None):
+def make_agent(
+    store,
+    *,
+    inbox=None,
+    executor=maybeDeferred,
+    publisher=None,
+    reports_dir=None,
+    orchestrator_agent_aid=None,
+):
     agent = VisualEventAgent(
         aid=AID(name="visual@localhost:5007"),
         capture_agent_aid="capture@localhost:5003",
+        orchestrator_agent_aid=orchestrator_agent_aid,
         pid="visual-test",
         pdi_threshold=0.0875,
         idle_patience_frames=2,
@@ -91,6 +101,7 @@ def make_agent(store, *, inbox=None, executor=maybeDeferred, publisher=None, rep
         defer_executor=executor,
         reports_dir=reports_dir or tempfile.gettempdir(),
     )
+    agent.agentInstance = object()  # Simula agentInstance para _safe_send
     agent.sent_messages = []
     agent.send = agent.sent_messages.append
     return agent
@@ -247,6 +258,27 @@ class VisualEventAgentTests(unittest.TestCase):
         message = agent.sent_messages[0]
         self.assertEqual(message.ontology, "agent-ready")
         self.assertEqual(json.loads(message.content)["agent"], agent.aid.name)
+
+    def test_visual_state_message_sent_to_both_orchestrator_and_capture(self):
+        store = FrameStore()
+        agent = make_agent(
+            store,
+            orchestrator_agent_aid="orchestrator@localhost:5005",
+        )
+        event = visual_frame(
+            store, 0, "F0", np.zeros((240, 320), dtype=np.uint16), capture_index=1
+        )
+        agent.react(acl_visual(event))
+
+        # Deve haver 1 mensagem de visual-state enviada
+        visual_msgs = [m for m in agent.sent_messages if m.ontology == "visual-state"]
+        self.assertEqual(len(visual_msgs), 1)
+        msg = visual_msgs[0]
+        receiver_names = [r.name for r in msg.receivers]
+        self.assertIn("orchestrator@localhost:5005", receiver_names)
+        self.assertIn("capture@localhost:5003", receiver_names)
+        content = json.loads(msg.content)
+        self.assertEqual(content["frame_id"], "F0")
 
     def test_main_data_plane_is_identical_with_visual_off_or_on(self):
         class SelectionAdapter:

@@ -21,6 +21,7 @@ from domain.visual_activity import (
     DEFAULT_IDLE_PATIENCE,
     DEFAULT_PDI_THRESHOLD,
     DEFAULT_PIXEL_THRESHOLD_MM,
+    DEFAULT_ROI_FRACTIONS,
     VisualActivityDetector,
     readonly_view,
 )
@@ -72,6 +73,7 @@ class VisualEventAgent(Agent):
         pdi_threshold: float = DEFAULT_PDI_THRESHOLD,
         idle_patience_frames: int = DEFAULT_IDLE_PATIENCE,
         pixel_threshold_mm: float = DEFAULT_PIXEL_THRESHOLD_MM,
+        roi_fractions: tuple[float, float, float, float] = DEFAULT_ROI_FRACTIONS,
         frame_store: FrameStore = FRAME_STORE,
         orchestrator_agent_aid: str | None = None,
         inbox: OrderedInbox[VisualInputEvent] | None = None,
@@ -92,6 +94,7 @@ class VisualEventAgent(Agent):
             pdi_threshold=pdi_threshold,
             idle_patience_frames=idle_patience_frames,
             pixel_threshold_mm=pixel_threshold_mm,
+            roi_fractions=roi_fractions,
         )
         self.state_publisher = state_publisher
         self._defer_executor = defer_executor
@@ -232,41 +235,7 @@ class VisualEventAgent(Agent):
                     "mad": observation.mad,
                 }
             )
-            self.latest_state_event = observation
-            if self.state_publisher is not None:
-                try:
-                    self.state_publisher(observation)
-                except Exception as exc:
-                    self._safe_log(f"[ERROR] state_publisher failed: {exc}")
-
-            if self.orchestrator_agent_aid is not None:
-                try:
-                    msg = ACLMessage(ACLMessage.INFORM)
-                    msg.set_ontology(VISUAL_STATE_ONTOLOGY)
-                    msg.add_receiver(AID(self.orchestrator_agent_aid))
-                    msg.set_content(
-                        json.dumps({
-                            "passage_id": observation.passage_id,
-                            "capture_index": observation.capture_index,
-                            "elapsed_time": observation.elapsed_time,
-                            "dataset_timestamp_ms": observation.dataset_timestamp_ms,
-                            "pdi_score": observation.pdi_score,
-                            "moving": observation.moving,
-                            "visual_state": observation.visual_state.value,
-                            "transition": observation.transition,
-                            "processing_time_ms": observation.processing_time_ms,
-                            "depth_filename": observation.depth_filename,
-                            "frame_id": observation.frame_id,
-                            "is_trigger": observation.is_trigger,
-                            "is_invalid": observation.is_invalid,
-                            "p99_mm": observation.p99_mm,
-                            "fraction_ge_2500": observation.fraction_ge_2500,
-                            "mad": observation.mad,
-                        })
-                    )
-                    self._safe_send(msg)
-                except Exception as exc:
-                    self._safe_log(f"[ERROR] Failed to send visual state to orchestrator: {exc}")
+            self._publish_state(observation)
 
             if observation.transition:
                 score_str = f"{observation.pdi_score:.4f}" if observation.pdi_score is not None else "None"
@@ -292,6 +261,46 @@ class VisualEventAgent(Agent):
         except Exception as exc:
             self._safe_log(f"[WARN] send failed: {exc}")
 
+    def _publish_state(self, observation: VisualStateEvent) -> None:
+        """Publica uma resolucao Visual para Capture e Orchestrator."""
+        self.latest_state_event = observation
+        if self.state_publisher is not None:
+            try:
+                self.state_publisher(observation)
+            except Exception as exc:
+                self._safe_log(f"[ERROR] state_publisher failed: {exc}")
+
+        if self.orchestrator_agent_aid is None and self.capture_agent_aid is None:
+            return
+        try:
+            msg = ACLMessage(ACLMessage.INFORM)
+            msg.set_ontology(VISUAL_STATE_ONTOLOGY)
+            if self.orchestrator_agent_aid is not None:
+                msg.add_receiver(AID(self.orchestrator_agent_aid))
+            if self.capture_agent_aid is not None:
+                msg.add_receiver(AID(self.capture_agent_aid))
+            msg.set_content(json.dumps({
+                "passage_id": observation.passage_id,
+                "capture_index": observation.capture_index,
+                "elapsed_time": observation.elapsed_time,
+                "dataset_timestamp_ms": observation.dataset_timestamp_ms,
+                "pdi_score": observation.pdi_score,
+                "moving": observation.moving,
+                "visual_state": observation.visual_state.value,
+                "transition": observation.transition,
+                "processing_time_ms": observation.processing_time_ms,
+                "depth_filename": observation.depth_filename,
+                "frame_id": observation.frame_id,
+                "is_trigger": observation.is_trigger,
+                "is_invalid": observation.is_invalid,
+                "p99_mm": observation.p99_mm,
+                "fraction_ge_2500": observation.fraction_ge_2500,
+                "mad": observation.mad,
+            }))
+            self._safe_send(msg)
+        except Exception as exc:
+            self._safe_log(f"[ERROR] Failed to send visual state message: {exc}")
+
 
     def _observation_failed(self, failure, event: VisualFrameEvent):
         try:
@@ -304,6 +313,23 @@ class VisualEventAgent(Agent):
                 f"[ERROR] Visual observation failed for "
                 f"lease={event.lease_id}: {error}"
             )
+            # Capture precisa resolver todo frame LOW ja adquirido. Uma falha
+            # de processamento nao pode manter o frame pendente para sempre;
+            # ela e explicitamente uma resolucao sem gatilho.
+            self._publish_state(VisualStateEvent(
+                passage_id=event.passage_id,
+                capture_index=event.capture_index,
+                elapsed_time=event.elapsed_time,
+                dataset_timestamp_ms=event.dataset_timestamp_ms,
+                moving=None,
+                visual_state=self.detector.state,
+                transition=None,
+                processing_time_ms=0.0,
+                depth_filename=event.depth_filename,
+                frame_id=event.frame_id,
+                is_trigger=False,
+                is_invalid=True,
+            ))
         finally:
             self._release_and_finish(event)
         return None

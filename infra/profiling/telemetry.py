@@ -275,6 +275,13 @@ class CaptureTimingRecorder:
         with self._lock:
             return [dict(row) for row in self._rows]
 
+    def get_latest(self) -> dict | None:
+        """Retorna a última amostra sem expor o armazenamento interno."""
+        with self._lock:
+            if not self._rows:
+                return None
+            return dict(self._rows[-1])
+
     def persist(self) -> bool:
         with self._lock:
             rows = [dict(row) for row in self._rows]
@@ -472,6 +479,10 @@ class QueueTelemetryMonitor(_CsvTelemetryMonitor):
         self._selection_to_preprocessing_queue = selection_to_preprocessing_queue
         self._preprocessing_to_prediction_queue = preprocessing_to_prediction_queue
 
+    def prediction_backlog(self) -> int:
+        """Ocupação atual da borda Preprocessing -> Prediction."""
+        return max(0, int(self._preprocessing_to_prediction_queue.qsize()))
+
     def _sample(self) -> dict:
         monotonic_ns = time.monotonic_ns()
         row = {
@@ -484,9 +495,7 @@ class QueueTelemetryMonitor(_CsvTelemetryMonitor):
             "selection_to_preprocessing_qsize": (
                 self._selection_to_preprocessing_queue.qsize()
             ),
-            "preprocessing_to_prediction_qsize": (
-                self._preprocessing_to_prediction_queue.qsize()
-            ),
+            "preprocessing_to_prediction_qsize": self.prediction_backlog(),
         })
         return row
 

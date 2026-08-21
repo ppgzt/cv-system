@@ -7,6 +7,8 @@ nao importa agentes, blackboard, politicas ou internals de PADE/Twisted.
 from __future__ import annotations
 
 from pathlib import Path
+import csv
+import time
 from typing import Callable
 
 from infra.profiling.telemetry import (
@@ -69,6 +71,37 @@ class PadeTelemetrySession:
         )
         self._started = False
         self._stopped = False
+        self.control_records: list[dict] = []
+        self._control_path = Path(reports_dir) / run_id / "control_activity.csv"
+
+    def record_control_state(self, state: dict) -> None:
+        """Recebe somente transições/recomputações compactas do Orchestrator."""
+        self.control_records.append({"monotonic_ns": time.monotonic_ns(), **state})
+
+    def prediction_backlog(self) -> int:
+        """Trabalho aceito e pré-processado aguardando Prediction.
+
+        É a mesma borda observada como ``preprocessing_to_prediction_qsize``
+        no CSV de filas. Não soma filas upstream e não inclui a inferência que
+        já começou; portanto mede exatamente a pressão pendente no gargalo.
+        """
+        return self.queue_monitor.prediction_backlog()
+
+    def latest_throttling(self) -> dict | None:
+        """Última leitura já coletada pelo monitor de hardware, ou None."""
+        row = self.hardware_monitor.get_latest()
+        if row is None:
+            return None
+        return {
+            "sampled_at_monotonic_ns": row.get("monotonic_ns"),
+            "throttled_raw": row.get("throttled_raw"),
+            "throttled_mask": row.get("throttled_mask"),
+            "undervoltage_current": row.get("undervoltage_current"),
+            "arm_frequency_capped_current": row.get("arm_frequency_capped_current"),
+            "throttled_current": row.get("throttled_current"),
+            "soft_temperature_limit_current": row.get("soft_temperature_limit_current"),
+            "throttling_command_available": row.get("throttling_command_available"),
+        }
 
     def start(self) -> None:
         if self._started:
@@ -89,4 +122,9 @@ class PadeTelemetrySession:
             self.hardware_monitor.join(timeout=join_timeout)
         if self.capture_timing_recorder is not None:
             self.capture_timing_recorder.persist()
-
+        if self.control_records:
+            self._control_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._control_path.open("w", newline="", encoding="utf-8") as file:
+                writer = csv.DictWriter(file, fieldnames=self.control_records[0].keys())
+                writer.writeheader()
+                writer.writerows(self.control_records)

@@ -82,6 +82,18 @@ def make_index(timestamps_ms):
 
 
 class PassageTimingTests(unittest.TestCase):
+    def test_worker_exception_propagates_shutdown_sentinel(self):
+        pipeline = ThreadPipeline("guard-test", "single", fps=1.0)
+        downstream = queue.Queue()
+
+        def failing_worker():
+            raise RuntimeError("synthetic worker failure")
+
+        pipeline._run_worker_guarded(
+            "synthetic", failing_worker, (), downstream
+        )
+        self.assertIsNone(downstream.get_nowait())
+
     def _pipeline(self, fps, *, native=False, max_passage_seconds=None):
         pipeline = ThreadPipeline(
             pid="test",

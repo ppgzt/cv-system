@@ -89,6 +89,7 @@ class CaptureControlEvent:
     passage_id: str
     target_rate: str  # "LOW", "MEDIUM", "HIGH"
     reason: str | None = None
+    control_sequence: int = 0
 
 
 PipelineEvent: TypeAlias = (
@@ -148,4 +149,3 @@ def event_from_json(payload: str) -> PipelineEvent:
     if not isinstance(decoded, dict):
         raise ValueError("pipeline event JSON must contain an object")
     return event_from_dict(decoded)
-

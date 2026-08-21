@@ -14,8 +14,9 @@ class VisualState(str, Enum):
     ACTIVE = "ACTIVE"
 
 
-# Constantes consolidadas da baseline PDI + Quality Gate
-DEFAULT_ROI_FRACTIONS = (0.30, 0.70, 0.20, 0.80)
+# Configuração final congelada do Visual Event: faixa vertical full-width.
+# Para 240×320, roi_slices produz y=72:162 e x=0:320.
+DEFAULT_ROI_FRACTIONS = (0.30, 0.675, 0.00, 1.00)
 DEFAULT_PIXEL_THRESHOLD_MM = 200.0
 DEFAULT_PDI_THRESHOLD = 0.08747855917667238
 DEFAULT_IDLE_PATIENCE = 3
@@ -78,7 +79,7 @@ def roi_slices(
     shape: tuple[int, int],
     fractions: tuple[float, float, float, float] = DEFAULT_ROI_FRACTIONS,
 ) -> tuple[slice, slice]:
-    """Retorna fatias (slice_y, slice_x) para a ROI B."""
+    """Retorna fatias (slice_y, slice_x) para a ROI configurada."""
     height, width = shape[:2]
     y0, y1, x0, x1 = fractions
     return (

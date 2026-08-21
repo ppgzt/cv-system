@@ -24,14 +24,42 @@ para uso futuro por outros agentes do MAS.
 """
 
 import time
+import json
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import mas  # noqa: F401 — side-effect: adiciona mas/ ao sys.path
 
 from pade.core.agent import Agent
 from pade.behaviours.protocols import TimedBehaviour
 from pade.misc.utility import display_message
+from pade.acl.aid import AID
+from pade.acl.messages import ACLMessage
+from domain.resource_events import ResourceState, ResourceStateEvent
+from mas.experiment_config import (
+    RESOURCE_CRITICAL_TEMPERATURE_C,
+    RESOURCE_STALE_AFTER_SECONDS,
+    RESOURCE_WARNING_PREDICTION_BACKLOG,
+    RESOURCE_WARNING_TEMPERATURE_C,
+)
+
+RESOURCE_STATE_ONTOLOGY = "resource-state"
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceThresholds:
+    """Thresholds congelados do controle experimental PIBIC.
+
+    CPU e RAM continuam publicados para telemetria/blackboard, mas não fazem
+    parte da classificação SAFE/WARNING/CRITICAL desta versão.
+    """
+
+    warning_temperature_c: float = RESOURCE_WARNING_TEMPERATURE_C
+    critical_temperature_c: float = RESOURCE_CRITICAL_TEMPERATURE_C
+    warning_prediction_backlog: int = RESOURCE_WARNING_PREDICTION_BACKLOG
+    stale_after_seconds: float = RESOURCE_STALE_AFTER_SECONDS
 
 # Import monitors from mas.utils (Adapter approach)
 from mas.utils.cpu_monitor import CPUMonitor
@@ -70,37 +98,36 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
         snapshot = self._build_snapshot()
         if snapshot is not None:
             self.blackboard.write_metrics(snapshot)
+            self.agent.publish_resource_snapshot(snapshot)
 
     def _build_snapshot(self) -> dict | None:
         cpu_mon = self.agent.cpu_monitor
         ram_mon = self.agent.ram_monitor
         temp_mon = self.agent.temp_monitor
 
-        if cpu_mon is None or ram_mon is None:
-            return None
-
-        cpu_latest = cpu_mon.get_latest()
-        ram_latest = ram_mon.get_latest()
+        cpu_latest = cpu_mon.get_latest() if cpu_mon else None
+        ram_latest = ram_mon.get_latest() if ram_mon else None
         temp_latest = temp_mon.get_latest() if temp_mon else None
-
-        if cpu_latest is None or ram_latest is None:
-            return None
 
         now = time.time()
 
         # CPU: [timestamp, core_0, core_1, ...]
-        cpu_cores = [float(v) for v in cpu_latest[1:]]
+        cpu_cores = [float(v) for v in cpu_latest[1:]] if cpu_latest else []
         cpu_percent = round(sum(cpu_cores) / len(cpu_cores), 2) if cpu_cores else 0.0
 
         # RAM: [timestamp, total, available, used, percent, free, active, inactive, buffers, cached]
-        ram_percent = round(float(ram_latest[4]), 2)
-        ram_total = int(ram_latest[1])
-        ram_available = int(ram_latest[2])
-        ram_used = int(ram_latest[3])
-        ram_free = int(ram_latest[5])
+        ram_percent = round(float(ram_latest[4]), 2) if ram_latest else 0.0
+        ram_total = int(ram_latest[1]) if ram_latest else 0
+        ram_available = int(ram_latest[2]) if ram_latest else 0
+        ram_used = int(ram_latest[3]) if ram_latest else 0
+        ram_free = int(ram_latest[5]) if ram_latest else 0
 
-        # Temperature: [timestamp, temp]
-        temp_val = float(temp_latest[1]) if temp_latest else 0.0
+        # Temperature: [timestamp, temp]; None significa sensor indisponível.
+        temp_val = None if temp_latest is None or temp_latest[1] is None else float(temp_latest[1])
+
+        prediction_backlog = self.agent.get_prediction_backlog()
+        throttling = self.agent.get_throttling_reading()
+        throttling_active = self.agent.throttling_active(throttling)
 
         recorded_at_iso = datetime.fromtimestamp(now).isoformat(timespec="microseconds")
 
@@ -109,6 +136,17 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
             "cpu_percent": cpu_percent,
             "ram_percent": ram_percent,
             "temperature": temp_val,
+            "temperature_c": temp_val,
+            "prediction_backlog": prediction_backlog,
+            "throttled_raw": throttling.get("throttled_raw") if throttling else None,
+            "throttled_mask": throttling.get("throttled_mask") if throttling else None,
+            "throttling_command_available": (
+                throttling.get("throttling_command_available") if throttling else None
+            ),
+            "throttling_active": throttling_active,
+            "throttling_sample_monotonic_ns": (
+                throttling.get("sampled_at_monotonic_ns") if throttling else None
+            ),
             "cpu_cores": cpu_cores,
             "ram_total": ram_total,
             "ram_available": ram_available,
@@ -120,6 +158,7 @@ class _PublishMetricsToBlackboard(TimedBehaviour):
             "version": self._version,
             "recorded_at": recorded_at_iso,
             "updated_at": recorded_at_iso,
+            "sampled_at_monotonic_ns": time.monotonic_ns(),
             "metrics": metrics,
         }
 
@@ -141,6 +180,11 @@ class ResourceManagerAgent(Agent):
         reports_dir: str = "infra/reports",
         blackboard: BlackboardAdapter | None = None,
         blackboard_interval_s: float = 5.0,
+        orchestrator_agent_aid: str | None = None,
+        thresholds: ResourceThresholds | None = None,
+        prediction_backlog_provider: Callable[[], int] | None = None,
+        throttling_provider: Callable[[], dict | None] | None = None,
+        control_enabled: bool = False,
         debug: bool = False,
     ):
         super().__init__(aid=aid, debug=debug)
@@ -154,6 +198,13 @@ class ResourceManagerAgent(Agent):
         self.blackboard = blackboard or InMemoryBlackboardAdapter()
         self._blackboard_publisher: _PublishMetricsToBlackboard | None = None
         self._blackboard_interval_s = blackboard_interval_s
+        self.orchestrator_agent_aid = orchestrator_agent_aid
+        self.thresholds = thresholds or ResourceThresholds()
+        self.prediction_backlog_provider = prediction_backlog_provider
+        self.throttling_provider = throttling_provider
+        self.control_enabled = control_enabled
+        self._resource_sequence = 0
+        self._last_resource_state = ResourceState.SAFE
 
     def on_start(self):
         super().on_start()
@@ -189,6 +240,91 @@ class ResourceManagerAgent(Agent):
                 interval_seconds=self._blackboard_interval_s,
             )
             self.behaviours.append(self._blackboard_publisher)
+
+    def get_prediction_backlog(self) -> int:
+        """Retorna somente trabalho aceito aguardando Prediction."""
+        if self.prediction_backlog_provider is None:
+            return 0
+        try:
+            return max(0, int(self.prediction_backlog_provider()))
+        except Exception:
+            return 0
+
+    def get_throttling_reading(self) -> dict | None:
+        """Lê a última telemetria de hardware sem deixar falha escapar."""
+        if self.throttling_provider is None:
+            return None
+        try:
+            reading = self.throttling_provider()
+            return dict(reading) if reading is not None else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def throttling_active(reading: dict | None) -> bool | None:
+        """True se algum bit de condição *atual* do Pi estiver ativo."""
+        if reading is None or reading.get("throttling_command_available") is not True:
+            return None
+        return any(reading.get(name) is True for name in (
+            "undervoltage_current",
+            "arm_frequency_capped_current",
+            "throttled_current",
+            "soft_temperature_limit_current",
+        ))
+
+    def publish_resource_snapshot(self, snapshot: dict) -> ResourceStateEvent:
+        """Classifica e, somente no modo resource-aware, notifica controle."""
+        metrics = snapshot["metrics"]
+        state, reasons = self._classify(metrics)
+        self._resource_sequence += 1
+        event = ResourceStateEvent(
+            sequence=self._resource_sequence,
+            observed_at_monotonic_ns=int(
+                snapshot.get("sampled_at_monotonic_ns", time.monotonic_ns())
+            ),
+            state=state,
+            metrics=dict(metrics),
+            reasons=tuple(reasons),
+        )
+        if state is not self._last_resource_state:
+            display_message(
+                self.aid.name,
+                f"[Resource] {self._last_resource_state.value}->{state.value} "
+                f"reason={','.join(reasons) or 'recovered'}",
+            )
+            self._last_resource_state = state
+        if self.control_enabled and self.orchestrator_agent_aid is not None:
+            msg = ACLMessage(ACLMessage.INFORM)
+            msg.set_ontology(RESOURCE_STATE_ONTOLOGY)
+            msg.add_receiver(AID(self.orchestrator_agent_aid))
+            msg.set_content(json.dumps({
+                "sequence": event.sequence,
+                "observed_at_monotonic_ns": event.observed_at_monotonic_ns,
+                "state": event.state.value,
+                "metrics": dict(event.metrics),
+                "reasons": list(event.reasons),
+            }))
+            try:
+                self.send(msg)
+            except Exception:
+                pass
+        return event
+
+    def _classify(self, metrics: dict) -> tuple[ResourceState, list[str]]:
+        thresholds = self.thresholds
+        throttling_active = metrics.get("throttling_active")
+        temperature_c = metrics.get("temperature_c", metrics.get("temperature"))
+        backlog = int(metrics.get("prediction_backlog", 0))
+
+        if throttling_active is True:
+            return ResourceState.CRITICAL, ["throttling_active"]
+        if temperature_c is not None and float(temperature_c) >= thresholds.critical_temperature_c:
+            return ResourceState.CRITICAL, [f"temperature_c>={thresholds.critical_temperature_c}"]
+        if temperature_c is not None and float(temperature_c) >= thresholds.warning_temperature_c:
+            return ResourceState.WARNING, [f"temperature_c>={thresholds.warning_temperature_c}"]
+        if backlog >= thresholds.warning_prediction_backlog:
+            return ResourceState.WARNING, [f"prediction_backlog>={thresholds.warning_prediction_backlog}"]
+        return ResourceState.SAFE, []
 
     def stop_monitoring(self):
         """Para os monitores e escreve os CSVs.

@@ -2,15 +2,36 @@
 """Testes unitários puros para SelectionHold e OrchestratorAgent."""
 
 import unittest
+import json
 from domain.selection_hold import SelectionHold
 from domain.visual_activity import VisualState
 from domain.visual_events import VisualStateEvent
 from domain.pipeline_events import SelectionEvidenceEvent
 from mas.agents.orchestrator_agent import OrchestratorAgent
 from pade.acl.aid import AID
+from pade.acl.messages import ACLMessage
 
 
 class TestSelectionHoldAndOrchestrator(unittest.TestCase):
+    def test_acl_selection_evidence_accepts_canonical_event_type_field(self):
+        orch = OrchestratorAgent(AID("o@localhost:1"), "c@localhost:2")
+        orch.send = lambda _message: None
+        orch.handle_passage_started("P")
+        message = ACLMessage(ACLMessage.INFORM)
+        message.set_sender(AID("selection@localhost:3"))
+        message.set_ontology("selection-evidence")
+        message.set_content(json.dumps({
+            "event_type": "selection_evidence",
+            "passage_id": "P",
+            "capture_index": 1,
+            "frame_id": "F",
+            "stream_seq": 7,
+            "accepted": True,
+            "probability": 0.9,
+        }))
+        orch.react(message)
+        self.assertTrue(orch.selection_hold.hold_active)
+
     def test_selection_hold_lifecycle(self):
         hold = SelectionHold(n_rejections_threshold=2)
         self.assertFalse(hold.hold_active)

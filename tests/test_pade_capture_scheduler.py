@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from domain.pipeline_events import FrameEvent
 from domain.helpers.capture_schedule import (
     build_fixed_fps_schedule,
     build_original_timing_schedule,
@@ -196,6 +197,9 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
         capture_timing_recorder=None,
         visual_agent_aid=None,
         fail_visual_send=False,
+        low_fps=None,
+        medium_fps=None,
+        initial_rate=None,
     ):
         scheduler = FakeScheduler()
         store = FrameStore()
@@ -213,6 +217,8 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             selection_agent_aid="selection@localhost:5005",
             animal_tags=list(indexes),
             fps=fps,
+            low_fps=low_fps,
+            medium_fps=medium_fps,
             max_passage_seconds=max_passage_seconds,
             native_timestamps=native_timestamps,
             frame_store=store,
@@ -224,9 +230,88 @@ class PadeCaptureSchedulerTests(unittest.TestCase):
             iso_now=lambda: f"t={scheduler.now:.3f}",
             frame_id_factory=lambda: next(frame_ids),
         )
+        if initial_rate is not None:
+            original_begin = behaviour._begin_next_passage
+            def begin_with_rate():
+                original_begin()
+                behaviour.handle_capture_control(initial_rate, "N")
+            behaviour._begin_next_passage = begin_with_rate
         behaviour.start()
         scheduler.run_all()
         return scheduler, store, dataset, agent, behaviour
+
+    def test_medium_is_a_native_trace_cap_not_an_upsampler(self):
+        """A 5 FPS, MEDIUM=7 admite somente os frames nativos existentes."""
+        times = [0.0, 200.0, 400.0, 600.0, 800.0]
+        _, _, _, agent, _ = self.run_capture(
+            {"N": make_index(times)}, fps=None, low_fps=4.0, medium_fps=7.0,
+            initial_rate="MEDIUM",
+        )
+        frames = [payload for _, payload in pipeline_records(agent) if payload["event_type"] == "frame"]
+        self.assertEqual([item["dataset_timestamp_ms"] for item in frames], times)
+        self.assertEqual(len({item["frame_id"] for item in frames}), len(times))
+
+    def test_medium_only_decimates_dense_regions_of_irregular_trace(self):
+        """Trechos esparsos sao preservados; o first_ge pula somente excesso denso."""
+        times = [0.0, 100.0, 200.0, 400.0, 600.0, 620.0, 640.0, 900.0]
+        _, _, _, agent, _ = self.run_capture(
+            {"N": make_index(times)}, fps=None, low_fps=4.0, medium_fps=7.0,
+            initial_rate="MEDIUM",
+        )
+        selected = [payload["dataset_timestamp_ms"] for _, payload in pipeline_records(agent) if payload["event_type"] == "frame"]
+        self.assertEqual(selected, [0.0, 200.0, 400.0, 600.0, 900.0])
+        self.assertEqual(len(selected), len(set(selected)))
+
+    def test_adaptive_scheduler_stops_at_real_capped_passage_end(self):
+        times = [0.0, 100.0, 200.0, 400.0, 600.0, 900.0]
+        scheduler, _, _, agent, _ = self.run_capture(
+            {"N": make_index(times)}, fps=None, low_fps=4.0,
+            max_passage_seconds=0.45,
+        )
+        selected = [
+            payload["dataset_timestamp_ms"]
+            for _, payload in pipeline_records(agent)
+            if payload["event_type"] == "frame"
+        ]
+        self.assertEqual(selected, [0.0, 400.0])
+        end = next(
+            payload for _, payload in pipeline_records(agent)
+            if payload["event_type"] == "end_passage"
+        )
+        self.assertEqual(end["total_captured_frames"], 2)
+        self.assertAlmostEqual(scheduler.now, 0.45)
+
+    def test_pipeline_send_failure_discards_frame_and_still_reaches_end(self):
+        scheduler = FakeScheduler()
+        store = FrameStore()
+        dataset = FakeDataset({"N": make_index([0.0])})
+        agent = FakeAgent(scheduler, store)
+        behaviour = DatasetCaptureBehaviour(
+            agent=agent, dataset=dataset,
+            next_agent_aid="selection@localhost:5005",
+            selection_agent_aid="selection@localhost:5005",
+            animal_tags=["N"], fps=1.0, frame_store=store,
+            call_later=scheduler.call_later, monotonic=lambda: scheduler.now,
+            frame_id_factory=lambda: "failed-frame",
+        )
+        original_send = behaviour._send_pipeline_event
+        calls = 0
+        def fail_first_frame(event):
+            nonlocal calls
+            calls += 1
+            if isinstance(event, FrameEvent):
+                raise RuntimeError("synthetic pipeline send failure")
+            original_send(event)
+        behaviour._send_pipeline_event = fail_first_frame
+
+        behaviour.start()
+        scheduler.run_all()
+        self.assertIsNone(store.get("failed-frame"))
+        self.assertTrue(any(
+            payload.get("event_type") == "end_passage"
+            for _, payload in pipeline_records(agent)
+        ))
+        self.assertGreaterEqual(calls, 2)
 
     def test_capture_sets_context_and_registers_schedule_without_using_send_time(self):
         context = TelemetryContext(
@@ -525,26 +610,17 @@ class PadeCaptureIntegrationTests(unittest.TestCase):
         self.assertIsNone(strategy.fps)
         self.assertTrue(strategy.native_timestamps)
 
-    def test_visual_strategy_requires_explicit_provisional_configuration(self):
-        with self.assertRaises(ValueError):
-            MASStrategy(
-                pid="test",
-                mode="single",
-                fps=5.0,
-                visual_event_enabled=True,
-            )
-
+    def test_visual_strategy_uses_frozen_defaults_when_not_overridden(self):
         strategy = MASStrategy(
             pid="test",
             mode="single",
             fps=5.0,
             visual_event_enabled=True,
-            visual_pdi_threshold=0.0875,
-            visual_pixel_threshold_mm=200.0,
-            visual_idle_patience=3,
         )
         self.assertTrue(strategy.visual_event_enabled)
-        self.assertEqual(strategy.visual_pdi_threshold, 0.0875)
+        self.assertEqual(strategy.low_fps, 4.0)
+        self.assertEqual(strategy.medium_fps, 7.0)
+        self.assertEqual(strategy.visual_pdi_threshold, 0.08747855917667238)
         self.assertEqual(strategy.visual_pixel_threshold_mm, 200.0)
         self.assertEqual(strategy.visual_idle_patience, 3)
 
