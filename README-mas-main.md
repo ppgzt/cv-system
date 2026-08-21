@@ -133,7 +133,7 @@ Cada execução salva em `<output-dir>/<run-id>/`: `metrics.json`, `report.md`,
 Finalize com `Ctrl-C` e aguarde o drain de END/Prediction; não mate o processo
 antes da finalização se precisar de resultados completos.
 
-Sequência recomendada no Raspberry:
+No Raspberry, o runtime continua sendo somente:
 
 ```bash
 git pull
@@ -141,47 +141,61 @@ source .venv/bin/activate
 # instalar/sincronizar dependências quando necessário
 # copiar os quatro TFLite por SCP para infra/models/ quando necessário
 sha256sum infra/models/*.tflite
-python mas-main.py --engine pade --mode resource-aware-visual-gated --num-animals 3 --run-id smoke-pi5
-# revisar CSVs/metrics; então executar a coorte planejada
+python mas-main.py --engine pade --mode resource-aware-visual-gated
 ```
 
-Antes da coorte, confirme no Pi `vcgencmd get_throttled`, AMS/PADE e shutdown.
+O experimento real não é iniciado localmente no Pi: ele é controlado pelo Mac,
+que possui o TC66C e aciona este comando remotamente por SSH.
 
-## Scripts operacionais no Raspberry
+## Smoke e piloto reais: controlador no Mac
 
-Os scripts usam somente o entrypoint oficial, descobrem a raiz do projeto a
-partir do próprio arquivo e exigem Python 3.13 no `.venv`. Dê permissão uma vez:
+Monte o sistema como nos experimentos anteriores: alimentação `wall → TC66C →
+Raspberry`, com o cabo de dados do TC66C conectado ao Mac. Os modelos TFLite
+continuam no Pi, em `infra/models/`; o Mac não os copia automaticamente.
+Configure SSH por chave e informe o destino sem hardcode no repositório:
 
 ```bash
-chmod +x scripts/smoke_raspberry.sh scripts/pilot_5_modes_raspberry.sh
+export PI_HOST=192.168.x.x
+export PI_USER=<usuario-no-pi>
+export PI_PROJECT_ROOT=/caminho/absoluto/cv-system
+# se necessário:
+export PI_PYTHON="$PI_PROJECT_ROOT/.venv/bin/python"
+export TC66_PORT=/dev/cu.usbmodemTC661
 ```
 
-Smoke curto (três primeiras tags da ordem oficial do dataset; a CLI atual não
-aceita filtrar tags individuais):
+Os runners validam remotamente `vcgencmd`, os dois TFLites ativos e seus SHA256;
+iniciam `TC66C.py` localmente no Mac antes de T0, executam o Pi por SSH, registram
+T1, regeneram `power.csv` do `tc66.log` e fazem SCP do output. Falha de SSH,
+logger, execução remota ou SCP interrompe a run. O formato de potência é
+`Datetime,Time[S],Volt[V],Current[A],Power[W]`.
+
+Smoke curto (três animais, na ordem oficial do dataset):
 
 ```bash
-./scripts/smoke_raspberry.sh
+./scripts/smoke_raspberry_from_mac.sh
 ```
 
-Ele exige os dois modelos ativos, valida seus SHA256 por padrão, exige
-`vcgencmd`, registra `measure_temp`/`get_throttled`, executa apenas
-`resource-aware-visual-gated --num-animals 3` e escreve em
-`results/smoke_raspberry_<timestamp>/`. Para desabilitar apenas a conferência de
-hash em uma investigação local, use `VERIFY_MODEL_SHA256=0`; isso não é
-recomendado para o piloto.
+Ele executa `resource-aware-visual-gated --num-animals 3`. O resultado volta ao
+Mac em `results/smoke_raspberry_from_mac_<timestamp>/`, com `remote_run.log`,
+`tc66.log`, `power.csv`, `metadata.txt` e `raspberry_outputs/`.
 
 Piloto ordenado, uma execução do cohort oficial por modalidade:
 
 ```bash
-./scripts/pilot_5_modes_raspberry.sh
-FIXED_FPS=5 ./scripts/pilot_5_modes_raspberry.sh
+./scripts/pilot_5_modes_from_mac.sh
+FIXED_FPS=5 ./scripts/pilot_5_modes_from_mac.sh
 ```
 
 Os resultados ficam em `results/pilot_5_modes_<timestamp>/01_original_timing`
-até `05_resource_aware_visual_gated`, cada um com `run.log`, além de
-`pilot.log` com o cooldown. Antes e depois de
-cada run o script registra timestamp, modo, temperatura, `get_throttled`, commit
-e hostname. Em qualquer falha ele para e preserva os logs.
+até `05_resource_aware_visual_gated`, cada um com `remote_run.log`, `tc66.log`,
+`power.csv`, `metadata.txt` e `raspberry_outputs/`, além de `pilot.log`.
+`metadata.txt` registra modo, run ID, FPS fixo, commits local/remoto, hostname do
+Pi, T0/T1, duração, temperatura/throttling antes/depois, path remoto, exit code e
+o caminho do log de potência.
+
+Para interromper, use `Ctrl-C` no terminal do Mac: o trap encerra o logger e
+preserva os logs já produzidos. Não inicie a próxima modalidade manualmente no
+Pi, pois o cooldown e a cópia são responsabilidade do controlador Mac.
 
 Entre as primeiras quatro execuções há cooldown obrigatório de 180 s. Depois,
 o script só continua quando `measure_temp` for estritamente menor que 50 °C;
@@ -191,13 +205,17 @@ reconfere a cada 60 s. Após 600 s ele apenas emite warning e continua esperando
 `COOLDOWN_EXPECTED_MAX_SECONDS`. Falha ou parsing inválido de `measure_temp`
 interrompe o piloto.
 
-Os dois scripts possuem `DRY_RUN=1` para validar a montagem de paths/comandos
-sem requerer Pi, modelos ou `vcgencmd`:
+Os runners Mac possuem `DRY_RUN=1` para validar a montagem dos cinco comandos
+sem requerer Pi ou TC66C:
 
 ```bash
-DRY_RUN=1 ./scripts/smoke_raspberry.sh
-DRY_RUN=1 ./scripts/pilot_5_modes_raspberry.sh
+DRY_RUN=1 ./scripts/smoke_raspberry_from_mac.sh
+DRY_RUN=1 ./scripts/pilot_5_modes_from_mac.sh
 ```
+
+`scripts/smoke_raspberry.sh` ficou como diagnóstico manual local do Pi.
+`scripts/pilot_5_modes_raspberry.sh` foi mantido apenas como marcador histórico
+e se recusa a coordenar um piloto local; use sempre o controlador Mac acima.
 
 Exemplo de cópia manual dos modelos, sem fixar usuário/IP:
 

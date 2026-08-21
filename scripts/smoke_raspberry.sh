@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runtime smoke for the Raspberry Pi. It never copies or versions TFLite files.
+# Pi-local diagnostic helper only. It does not measure energy, SSH, SCP, or
+# coordinate an experiment. The real experiment smoke is controlled from the
+# Mac by scripts/smoke_raspberry_from_mac.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
