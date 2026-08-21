@@ -3,6 +3,8 @@
 
 import unittest
 import json
+import pickle
+from unittest.mock import patch
 from domain.selection_hold import SelectionHold
 from domain.visual_activity import VisualState
 from domain.visual_events import VisualStateEvent
@@ -13,6 +15,21 @@ from pade.acl.messages import ACLMessage
 
 
 class TestSelectionHoldAndOrchestrator(unittest.TestCase):
+    def test_pade_ams_pickle_system_inform_is_not_decoded_as_control_json(self):
+        """PADE AMS table updates are pickle bytes, not control-plane JSON."""
+        orch = OrchestratorAgent(AID("orchestrator@localhost:5015"), "capture@localhost:5003")
+        message = ACLMessage(ACLMessage.INFORM)
+        message.set_sender(AID("ams@localhost:8000"))
+        message.set_system_message(is_system_message=True)
+        message.set_content(pickle.dumps({"selection@localhost:5005": {}}))
+
+        self.assertEqual(message.content[:1], b"\x80")
+        with patch("mas.agents.orchestrator_agent.display_message") as display:
+            orch.react(message)
+
+        self.assertEqual(orch.current_rate, "LOW")
+        self.assertFalse(orch.selection_hold.hold_active)
+        self.assertFalse(any("[ERROR] control event" in str(call) for call in display.call_args_list))
     def test_acl_selection_evidence_accepts_canonical_event_type_field(self):
         orch = OrchestratorAgent(AID("o@localhost:1"), "c@localhost:2")
         orch.send = lambda _message: None

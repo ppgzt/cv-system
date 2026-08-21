@@ -3,7 +3,7 @@
 # The Pi only executes mas-main.py; this file owns neither scientific policy nor
 # dataset selection.
 
-MAC_RUNNER_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+MAC_RUNNER_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SSH_BIN="${SSH_BIN:-ssh}"
 SCP_BIN="${SCP_BIN:-scp}"
 MAC_PYTHON="${MAC_PYTHON:-${MAC_RUNNER_ROOT}/.venv/bin/python}"
@@ -26,7 +26,9 @@ require_remote_config() {
     : "${PI_HOST:?set PI_HOST (or define it in the environment)}"
     : "${PI_USER:?set PI_USER (or define it in the environment)}"
     : "${PI_PROJECT_ROOT:?set PI_PROJECT_ROOT to the absolute project path on the Pi}"
-    PI_PYTHON="${PI_PYTHON:-${PI_PROJECT_ROOT}/.venv/bin/python}"
+    # The historical Pi protocol uses an absolute pyenv interpreter because a
+    # non-interactive SSH shell does not load the user's pyenv initialization.
+    PI_PYTHON="${PI_PYTHON:-/home/${PI_USER}/.pyenv/versions/cv_vend_mas/bin/python}"
     PI_TARGET="${PI_TARGET:-${PI_USER}@${PI_HOST}}"
     case "${PI_PROJECT_ROOT}${PI_PYTHON}${PI_TARGET}" in
         *"'"*|*$'\n'*|*$'\r'*) runner_fail "remote variables cannot contain quotes or newlines" ;;
@@ -141,6 +143,13 @@ run_remote_pipeline() {
     status=${PIPESTATUS[0]}
     set -e
     return "${status}"
+}
+
+remote_log_has_internal_error() {
+    # Match runtime log signatures, not arbitrary prose that merely contains
+    # the word "error". PADE's display_message prefix is "--> [ERROR]".
+    local log_file="$1"
+    grep -nE 'Traceback \(most recent call last\):|UnicodeDecodeError:|-->[[:space:]]*\[ERROR\]|Unhandled [Ee]rror|unhandled exception' "${log_file}"
 }
 
 copy_remote_output() {

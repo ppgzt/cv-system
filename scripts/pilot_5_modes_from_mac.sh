@@ -62,6 +62,10 @@ run_mode() {
     after_thr="$(remote_throttled)" || return 1
     printf 'temperature_after_c=%s\nthrottled_after=%s\n' "${after_temp}" "${after_thr}" >> "${metadata}"
     printf 'recorded_after=%s\n' "$(mac_timestamp)" >> "${metadata}"
+    if remote_log_has_internal_error "${log}"; then
+        printf '%s\n' "[pilot] internal runtime error detected in ${log}" | tee -a "${log}" >&2
+        return 70
+    fi
     [[ "${status}" -eq 0 ]] || return "${status}"
     copy_remote_output "${remote_dir}" "${mode_dir}"
     log_pilot "[pilot] completed ${ordinal}_${slug}"

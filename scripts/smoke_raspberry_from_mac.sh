@@ -55,6 +55,14 @@ TEMP_AFTER="$(remote_temperature_c)" || exit 1
 THROTTLED_AFTER="$(remote_throttled)" || exit 1
 printf 'temperature_after_c=%s\nthrottled_after=%s\nduration_seconds=%s\n' "${TEMP_AFTER}" "${THROTTLED_AFTER}" "$(( $(date +%s) - STARTED_SECONDS ))" >> "${METADATA}"
 printf 'recorded_after=%s\n' "$(mac_timestamp)" >> "${METADATA}"
-[[ "${STATUS}" -eq 0 ]] || exit "${STATUS}"
+if remote_log_has_internal_error "${LOG_FILE}"; then
+    printf '%s\n' "[smoke] internal runtime error detected in ${LOG_FILE}" | tee -a "${LOG_FILE}" >&2
+    printf '%s\n' "SMOKE FAIL" | tee -a "${LOG_FILE}" >&2
+    exit 70
+fi
+if [[ "${STATUS}" -ne 0 ]]; then
+    printf '%s\n' "SMOKE FAIL" | tee -a "${LOG_FILE}" >&2
+    exit "${STATUS}"
+fi
 copy_remote_output "${REMOTE_RUN_DIR}" "${MODE_DIR}"
 printf '%s\n' "SMOKE PASS results=${MODE_DIR}"

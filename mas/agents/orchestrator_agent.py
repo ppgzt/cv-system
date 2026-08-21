@@ -22,6 +22,12 @@ SELECTION_EVIDENCE_ONTOLOGY = "selection-evidence"
 RESOURCE_STATE_ONTOLOGY = "resource-state"
 CAPTURE_CONTROL_ONTOLOGY = "capture-control"
 CAPTURE_PASSAGE_STARTED_ONTOLOGY = "capture-passage-started"
+_CONTROL_ONTOLOGIES = frozenset({
+    CAPTURE_PASSAGE_STARTED_ONTOLOGY,
+    VISUAL_STATE_ONTOLOGY,
+    SELECTION_EVIDENCE_ONTOLOGY,
+    RESOURCE_STATE_ONTOLOGY,
+})
 
 _RATE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 _CAP_FOR_RESOURCE = {ResourceState.SAFE: "HIGH", ResourceState.WARNING: "MEDIUM", ResourceState.CRITICAL: "LOW"}
@@ -52,9 +58,11 @@ class OrchestratorAgent(Agent):
         self.active_capture_passage_id: str | None = None
         self.current_visual_state = VisualState.IDLE
         self.resource_state = ResourceState.SAFE
-        # No modo resource-aware, antes da primeira amostra fresca, a política
-        # é conservadora e não autoriza upshift.
-        self.resource_cap = "HIGH" if not resource_control_enabled else "LOW"
+        # Antes da primeira amostra não existe cap válido a preservar. O
+        # bootstrap, portanto, não é uma condição LOW especial: Visual pode
+        # elevar a primeira passagem normalmente. Depois da primeira amostra,
+        # stale volta a congelar conservadoramente o cap efetivo conhecido.
+        self.resource_cap = "HIGH"
         self.desired_rate = "LOW"
         self.current_rate = "LOW"
         self._last_visual_capture_index = -1
@@ -76,9 +84,21 @@ class OrchestratorAgent(Agent):
 
     def react(self, message: ACLMessage):
         super().react(message)
+        # PADE entrega ao agente tambem o INFORM de sistema do AMS que atualiza
+        # sua tabela de agentes. Esse payload e pickle (bytes, prefixo 0x80),
+        # enquanto o plano de controle abaixo possui contrato JSON textual.
+        # Nunca tente decodificar mensagens de sistema/nem ontologias alheias
+        # como se fossem eventos de controle.
+        if message.system_message or message.ontology not in _CONTROL_ONTOLOGIES:
+            return
         if message.performative != ACLMessage.INFORM:
             return
         try:
+            if not isinstance(message.content, str):
+                raise TypeError(
+                    "control ACL content must be JSON text, got "
+                    f"{type(message.content).__name__}"
+                )
             data = json.loads(message.content)
             if message.ontology == CAPTURE_PASSAGE_STARTED_ONTOLOGY:
                 self.handle_passage_started(data["passage_id"])
@@ -165,7 +185,9 @@ class OrchestratorAgent(Agent):
         # Uma amostra stale não pode causar novo upshift. Congelamos o teto no
         # estado efetivo vigente; amostra fresca retoma o cap normal sem spam.
         if stale_now:
-            stale_cap = self.current_rate
+            # Sem amostra anterior não há um teto de recurso válido; aplicar
+            # LOW aqui tornaria o primeiro animal diferente de todos os outros.
+            stale_cap = "HIGH" if self._last_resource_observed_ns is None else self.current_rate
             self._resource_stale = True
         else:
             stale_cap = self.resource_cap

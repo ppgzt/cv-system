@@ -28,7 +28,9 @@ case "${command}" in
   *get_throttled*) echo 'throttled=0x0' ;;
   *rev-parse*) echo deadbeef ;;
   hostname) echo mock-pi ;;
-  *mas-main.py*) exit "${MOCK_REMOTE_EXIT:-0}" ;;
+  *mas-main.py*)
+    [[ "${MOCK_RUNTIME_ERROR:-0}" == 1 ]] && echo '[orchestrator@localhost:5015] --> [ERROR] synthetic control failure'
+    exit "${MOCK_REMOTE_EXIT:-0}" ;;
   *) exit 0 ;;
 esac
 EOF
@@ -51,5 +53,6 @@ if env "${env_base[@]}" MOCK_SSH_FAIL=1 RESULT_ROOT="${tmp}/ssh-fail" "${ROOT}/s
 if env "${env_base[@]}" MOCK_REMOTE_EXIT=7 RESULT_ROOT="${tmp}/remote-fail" "${ROOT}/scripts/smoke_raspberry_from_mac.sh" >/dev/null 2>&1; then exit 1; fi
 if env "${env_base[@]}" MOCK_SCP_EXIT=9 RESULT_ROOT="${tmp}/scp-fail" "${ROOT}/scripts/smoke_raspberry_from_mac.sh" >/dev/null 2>&1; then exit 1; fi
 if env "${env_base[@]}" MOCK_LOGGER_FAIL=1 RESULT_ROOT="${tmp}/logger-fail" "${ROOT}/scripts/smoke_raspberry_from_mac.sh" >/dev/null 2>&1; then exit 1; fi
+if env "${env_base[@]}" MOCK_RUNTIME_ERROR=1 RESULT_ROOT="${tmp}/runtime-error" "${ROOT}/scripts/smoke_raspberry_from_mac.sh" >/dev/null 2>&1; then exit 1; fi
 
 printf '%s\n' 'mac experiment runner mocks: PASS'

@@ -73,6 +73,17 @@ class TestResourceAwareControl(unittest.TestCase):
         self.assertTrue(self.orch.handle_resource_state(resource(2, ResourceState.SAFE, self.now)))
         self.assertEqual(self.orch.current_rate, "HIGH")
 
+    def test_first_passage_has_no_artificial_low_cap_before_resource_sample(self):
+        orch = OrchestratorAgent(
+            AID("o@localhost:1"), "c@localhost:2",
+            resource_control_enabled=True,
+            monotonic_ns=lambda: self.now,
+        )
+        orch.handle_passage_started("P")
+        self.assertTrue(orch.handle_visual_state(visual(1, VisualState.ACTIVE)))
+        self.assertEqual(orch.current_rate, "HIGH")
+        self.assertTrue(orch._resource_stale)
+
     def test_resource_events_are_ignored_outside_resource_aware_mode(self):
         orch = OrchestratorAgent(AID("o@localhost:1"), "c@localhost:2")
         orch.handle_passage_started("P")
