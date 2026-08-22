@@ -134,6 +134,11 @@ class DatasetCaptureBehaviour(Behaviour):
         self._current_rate = "LOW" if self.adaptive_mode else ("HIGH" if self.native_timestamps else "FIXED")
         self._next_sample_scheduled_ms = 0.0
         self._scheduled_call = None
+        # Cada decisao de aquisicao possui uma geracao.  Cancelar um
+        # DelayedCall normalmente basta, mas um callback que ja entrou na
+        # fila do reactor nao pode continuar representando a politica antiga
+        # depois de uma troca de taxa.
+        self._schedule_generation = 0
         self._pending_low_frames: dict[str, FrameEvent] = {}
         self._unavailable_visual_frames: set[str] = set()
         # No fim temporal de uma passagem Visual-Gated, os frames LOW ja
@@ -167,8 +172,21 @@ class DatasetCaptureBehaviour(Behaviour):
 
     def _schedule_at(self, deadline: float, callback: Callable):
         self._cancel_scheduled_call()
+        self._schedule_generation += 1
+        generation = self._schedule_generation
+
+        def guarded_callback():
+            # Uma transicao LOW/MEDIUM -> HIGH invalida qualquer decisao
+            # futura calculada com o periodo amostrado.  Nao e seguro confiar
+            # somente em DelayedCall.cancel(): um callback pode ja estar
+            # pronto para execucao quando o controle ACL for entregue.
+            if generation != self._schedule_generation:
+                return
+            self._scheduled_call = None
+            callback()
+
         delay = max(0.0, deadline - self._monotonic())
-        self._scheduled_call = self._call_later(delay, callback)
+        self._scheduled_call = self._call_later(delay, guarded_callback)
         return self._scheduled_call
 
     def _begin_next_passage(self) -> None:
@@ -298,6 +316,18 @@ class DatasetCaptureBehaviour(Behaviour):
 
         frame = self._current_frames[target_idx]
         target_t_ms = float(frame["relative_time_ms"])
+        if self.verbose:
+            deadline = (
+                "native"
+                if self._current_rate == "HIGH"
+                else f"{self._next_sample_scheduled_ms:.1f}ms"
+            )
+            display_message(
+                self.agent.aid.name,
+                f"[SCHED-NEXT] passage={self._current_tag} rate={self._current_rate} "
+                f"cursor={self._source_cursor} deadline={deadline} "
+                f"target_idx={target_idx} source={target_t_ms:.1f}ms",
+            )
         passage_end_ms = self._current_plan.end_timestamp_ms
         if passage_end_ms is not None and target_t_ms > passage_end_ms:
             self._schedule_at(
@@ -337,6 +367,19 @@ class DatasetCaptureBehaviour(Behaviour):
         self._source_cursor = target_idx + 1
         frame = self._current_frames[target_idx]
         t_current = float(frame["relative_time_ms"])
+
+        if self.verbose:
+            deadline = (
+                "native"
+                if self._current_rate == "HIGH"
+                else f"{self._next_sample_scheduled_ms:.1f}ms"
+            )
+            display_message(
+                self.agent.aid.name,
+                f"[SCHED-COMMIT] passage={self._current_tag} rate={self._current_rate} "
+                f"target_idx={target_idx} source={t_current:.1f}ms "
+                f"deadline={deadline}",
+            )
 
         if self._current_rate in {"LOW", "MEDIUM"}:
             self._next_sample_scheduled_ms = t_current + (1000.0 / self._sampling_fps())
@@ -518,11 +561,18 @@ class DatasetCaptureBehaviour(Behaviour):
             raise RuntimeError("MEDIUM requested without medium_fps configured")
         if control_sequence is not None:
             if control_sequence <= self._last_control_sequence:
+                if self.verbose:
+                    display_message(
+                        self.agent.aid.name,
+                        f"[SCHED-CONTROL] ignored stale seq={control_sequence} "
+                        f"last_seq={self._last_control_sequence} target={target_rate}",
+                    )
                 return
             self._last_control_sequence = control_sequence
 
         if target_rate != self._current_rate:
             previous = self._current_rate
+            previous_deadline = self._next_sample_scheduled_ms
             self._current_rate = target_rate
             if self.verbose:
                 display_message(
@@ -530,9 +580,34 @@ class DatasetCaptureBehaviour(Behaviour):
                     f"[CAPTURE RATE CHANGE] passage={passage_id}: {previous}->{target_rate}",
                 )
             if target_rate in {"LOW", "MEDIUM"} and self._current_frames:
-                current_idx = max(0, self._source_cursor - 1)
-                current_t = float(self._current_frames[current_idx]["relative_time_ms"])
-                self._next_sample_scheduled_ms = current_t + (1000.0 / self._sampling_fps())
+                # Antes da primeira aquisicao nao existe "ultimo frame".
+                # Reamostrar a partir de frames[0] + periodo nesse ponto
+                # pularia o primeiro source nativo ao receber um controle de
+                # bootstrap (por exemplo LOW -> MEDIUM). Depois de um frame
+                # committed, a deadline continua causalmente ancorada nele.
+                if self._source_cursor == 0:
+                    self._next_sample_scheduled_ms = float(
+                        self._current_frames[0]["relative_time_ms"]
+                    )
+                else:
+                    current_t = float(
+                        self._current_frames[self._source_cursor - 1]["relative_time_ms"]
+                    )
+                    self._next_sample_scheduled_ms = current_t + (
+                        1000.0 / self._sampling_fps()
+                    )
+            if self.verbose:
+                next_deadline = (
+                    "native"
+                    if target_rate == "HIGH"
+                    else f"{self._next_sample_scheduled_ms:.1f}ms"
+                )
+                display_message(
+                    self.agent.aid.name,
+                    f"[SCHED-CONTROL] seq={control_sequence} {previous}->{target_rate} "
+                    f"cursor={self._source_cursor} previous_deadline={previous_deadline:.1f}ms "
+                    f"next_deadline={next_deadline}",
+                )
             self._schedule_next_event()
 
     def _sampling_fps(self) -> float:

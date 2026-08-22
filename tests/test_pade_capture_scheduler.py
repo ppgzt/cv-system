@@ -185,6 +185,110 @@ class CapturePlanParityTests(unittest.TestCase):
 
 
 class PadeCaptureSchedulerTests(unittest.TestCase):
+    def start_adaptive_capture(self, times, *, low_fps=4.0):
+        """Inicia uma passagem adaptativa e deixa o primeiro frame committed.
+
+        O proximo callback fica deliberadamente agendado com a deadline LOW;
+        os testes de controle exercitam a troca antes desse callback.
+        """
+        scheduler = FakeScheduler()
+        store = FrameStore()
+        dataset = FakeDataset({"N": make_index(times)})
+        agent = FakeAgent(scheduler, store)
+        frame_ids = iter(f"frame-{index}" for index in range(100))
+        behaviour = DatasetCaptureBehaviour(
+            agent=agent,
+            dataset=dataset,
+            next_agent_aid="selection@localhost:5005",
+            selection_agent_aid="selection@localhost:5005",
+            animal_tags=["N"],
+            fps=None,
+            low_fps=low_fps,
+            frame_store=store,
+            call_later=scheduler.call_later,
+            monotonic=lambda: scheduler.now,
+            iso_now=lambda: f"t={scheduler.now:.3f}",
+            frame_id_factory=lambda: next(frame_ids),
+        )
+        behaviour.start()
+        scheduler.run_next()  # begin passage
+        scheduler.run_next()  # frame source 0; next decision is LOW
+        return scheduler, agent, behaviour
+
+    @staticmethod
+    def captured_source_times(agent):
+        return [
+            payload["dataset_timestamp_ms"]
+            for _, payload in pipeline_records(agent)
+            if payload["event_type"] == "frame"
+        ]
+
+    def test_low_to_high_invalidates_future_low_deadline(self):
+        """HIGH usa o proximo source ainda nao committed, nao a deadline LOW."""
+        scheduler, agent, behaviour = self.start_adaptive_capture(
+            [0.0, 100.0, 200.0, 300.0, 400.0]
+        )
+
+        # Apos 0 ms, LOW=4 FPS tinha decidido deadline=250 ms, cujo primeiro
+        # source seria 300 ms. O controle chega antes dessa decisao executar.
+        self.assertAlmostEqual(behaviour._next_sample_scheduled_ms, 250.0)
+        behaviour.handle_capture_control("HIGH", "N", control_sequence=1)
+        scheduler.run_all()
+
+        self.assertEqual(
+            self.captured_source_times(agent),
+            [0.0, 100.0, 200.0, 300.0, 400.0],
+        )
+
+    def test_high_to_low_restarts_causal_deadline_from_last_committed_source(self):
+        scheduler, agent, behaviour = self.start_adaptive_capture(
+            [0.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+        )
+        behaviour.handle_capture_control("HIGH", "N", control_sequence=1)
+        scheduler.run_next()  # HIGH commits source 100 ms
+        behaviour.handle_capture_control("LOW", "N", control_sequence=2)
+        scheduler.run_all()
+
+        # LOW=4 reinicia em 100+250=350 ms; first_ge e 400 ms.
+        self.assertEqual(self.captured_source_times(agent), [0.0, 100.0, 400.0])
+
+    def test_stale_control_cannot_replace_newer_high_decision(self):
+        scheduler, agent, behaviour = self.start_adaptive_capture(
+            [0.0, 100.0, 200.0, 300.0]
+        )
+        behaviour.handle_capture_control("HIGH", "N", control_sequence=2)
+        behaviour.handle_capture_control("LOW", "N", control_sequence=1)
+        scheduler.run_all()
+
+        self.assertEqual(behaviour._current_rate, "HIGH")
+        self.assertEqual(self.captured_source_times(agent), [0.0, 100.0, 200.0, 300.0])
+
+    def test_rapid_controls_are_monotonic_and_do_not_duplicate_frames(self):
+        scheduler, agent, behaviour = self.start_adaptive_capture(
+            [0.0, 100.0, 200.0, 300.0, 400.0]
+        )
+        behaviour.handle_capture_control("HIGH", "N", control_sequence=1)
+        behaviour.handle_capture_control("LOW", "N", control_sequence=2)
+        behaviour.handle_capture_control("HIGH", "N", control_sequence=3)
+        scheduler.run_all()
+
+        frames = [
+            payload for _, payload in pipeline_records(agent)
+            if payload["event_type"] == "frame"
+        ]
+        self.assertEqual(
+            [frame["dataset_timestamp_ms"] for frame in frames],
+            [0.0, 100.0, 200.0, 300.0, 400.0],
+        )
+        self.assertEqual(
+            [frame["capture_index"] for frame in frames],
+            list(range(1, len(frames) + 1)),
+        )
+        self.assertEqual(
+            [frame["stream_seq"] for frame in frames],
+            sorted(frame["stream_seq"] for frame in frames),
+        )
+
     def run_capture(
         self,
         indexes,
