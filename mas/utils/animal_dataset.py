@@ -5,9 +5,9 @@ Cada animal tem:
       lista de {relative_time_ms, depth_filename, rgb_filename, label}
       label in {background, parcial, suited, ruido}  (ground-truth)
   - data/exp1/DEPTH/<tag>/<depth_filename>
-      PNG depth uint16 mm, shape (240, 320). NÃO reescalar: o seletor
-      clipa em 4000 e o DataEnhance em 1950 (esperam mm crus, igual ao
-      treino).
+      PNG depth uint16 mm, shape (240, 320). NÃO reescalar: o seletor v3
+      aplica ROI10 e clipa em 1950; o DataEnhance também clipa em 1950,
+      com transformação espacial distinta (ambos esperam mm crus).
 """
 
 import json
